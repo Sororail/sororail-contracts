@@ -269,6 +269,64 @@ fn create_rejects_a_second_call() {
     );
 }
 
+/// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
+/// expected value is spelled out literally rather than built from
+/// `events::Created`, so renaming a topic or a field fails here.
+#[test]
+fn create_emits_the_created_event() {
+    let te = TestEnv::at(START);
+    let (token_client, grantor) = te.make_token(MINT);
+    let token_address = token_client.address.clone();
+    let beneficiary = te.make_address();
+    let env = te.env;
+
+    let client = VestingContractClient::new(&env, &env.register(VestingContract, ()));
+    client.create(
+        &grantor,
+        &beneficiary,
+        &token_address,
+        &TOTAL,
+        &START,
+        &CLIFF,
+        &DURATION,
+        &true,
+    );
+
+    let total: Val = TOTAL.into_val(&env);
+    let start: Val = START.into_val(&env);
+    let cliff: Val = CLIFF.into_val(&env);
+    let duration: Val = DURATION.into_val(&env);
+    let revocable: Val = true.into_val(&env);
+    // Map data: keys are the field names, serialized in sorted order.
+    let data: Val = map![
+        env,
+        (Symbol::new(&env, "beneficiary"), beneficiary.into_val(&env)),
+        (Symbol::new(&env, "cliff"), cliff),
+        (Symbol::new(&env, "duration"), duration),
+        (Symbol::new(&env, "revocable"), revocable),
+        (Symbol::new(&env, "start"), start),
+        (Symbol::new(&env, "token"), token_address.into_val(&env)),
+        (Symbol::new(&env, "total"), total),
+    ]
+    .into_val(&env);
+    assert_eq!(
+        env.events().all().filter_by_contract(&client.address),
+        vec![
+            env,
+            (
+                client.address.clone(),
+                vec![
+                    env,
+                    Symbol::new(&env, "vesting").into_val(&env),
+                    Symbol::new(&env, "created").into_val(&env),
+                    grantor.into_val(&env),
+                ],
+                data,
+            ),
+        ]
+    );
+}
+
 #[test]
 fn entry_points_error_before_create() {
     let env = Env::default();

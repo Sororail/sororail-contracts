@@ -634,6 +634,46 @@ fn extend_is_rejected_after_cancellation() {
     );
 }
 
+
+/// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
+/// expected value is spelled out literally rather than built from
+/// `events::Extended`, so renaming a topic or a field fails here.
+#[test]
+fn extend_emits_the_extended_event() {
+    let f = Fixture::new(true);
+    let new_stop_val = STOP + 300;
+    f.client.extend(&new_stop_val);
+
+    let env = &f.env;
+    let added: Val = (RATE * 300).into_val(env);
+    let deposited: Val = (DEPOSITED + RATE * 300).into_val(env);
+    let new_stop: Val = new_stop_val.into_val(env);
+    // Map data: keys are the field names, serialized in sorted order.
+    let data: Val = map![
+        env,
+        (Symbol::new(env, "added"), added),
+        (Symbol::new(env, "deposited"), deposited),
+        (Symbol::new(env, "new_stop"), new_stop),
+    ]
+    .into_val(env);
+    assert_eq!(
+        env.events().all().filter_by_contract(&f.client.address),
+        vec![
+            env,
+            (
+                f.client.address.clone(),
+                vec![
+                    env,
+                    Symbol::new(env, "stream").into_val(env),
+                    Symbol::new(env, "extended").into_val(env),
+                    f.sender.into_val(env),
+                ],
+                data,
+            ),
+        ]
+    );
+}
+
 // -------------------------------------------------------------- balance_of
 
 #[test]
