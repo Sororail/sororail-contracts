@@ -1,11 +1,14 @@
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::{Address as _, Events as _, Ledger as _},
     token::{StellarAssetClient, TokenClient},
-    Address, Env,
+    Address, Env, Event,
 };
 use sororail_common::Error;
 
-use crate::contract::{RecurringContract, RecurringContractClient};
+use crate::{
+    contract::{RecurringContract, RecurringContractClient},
+    events::Authorized,
+};
 
 const AMOUNT: i128 = 10_000;
 const PERIOD: u64 = 2_592_000; // 30 days
@@ -168,6 +171,35 @@ fn authorize_requires_the_payers_authorization() {
         &AMOUNT,
         &PERIOD,
         &None,
+    );
+}
+
+#[test]
+fn authorize_emits_the_authorized_event() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START);
+
+    let payer = Address::generate(&env);
+    let payee = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(issuer).address();
+
+    let client = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
+    client.authorize(&payer, &payee, &token, &AMOUNT, &PERIOD, &Some(12));
+
+    let expected = Authorized {
+        payer: payer.clone(),
+        payee: payee.clone(),
+        token: token.clone(),
+        amount_per_period: AMOUNT,
+        period_seconds: PERIOD,
+        max_periods: Some(12),
+        first_chargeable_at: START + PERIOD,
+    };
+    assert_eq!(
+        env.events().all(),
+        std::vec![expected.to_xdr(&env, &client.address)],
     );
 }
 

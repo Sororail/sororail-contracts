@@ -528,6 +528,77 @@ fn extend_is_rejected_after_cancellation() {
     );
 }
 
+#[test]
+fn extend_rejects_funding_that_overflows() {
+    // rate_per_second = i128::MAX and any new_stop > stop would overflow
+    // math::mul(rate_per_second, (new_stop - stop) as i128).
+    // We create a fresh stream with rate = i128::MAX / 2 + 1 so a 2-second
+    // extension causes overflow, then try to extend it.
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START);
+
+    let sender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let token_address = env.register_stellar_asset_contract_v2(issuer).address();
+    // Mint enough for a 1-second stream at this rate.
+    let overflow_rate: i128 = i128::MAX / 2 + 1;
+    StellarAssetClient::new(&env, &token_address).mint(&sender, &overflow_rate);
+
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+    // Create a 1-second stream so extend by 2 seconds overflows.
+    c.create(
+        &sender,
+        &recipient,
+        &token_address,
+        &overflow_rate,
+        &START,
+        &(START + 1),
+        &false,
+    );
+
+    assert_eq!(c.try_extend(&(START + 3)), Err(Ok(Error::Overflow)));
+}
+
+#[test]
+fn top_up_rejects_deposited_overflow() {
+    // Arrange a stream whose deposited is already near i128::MAX so that
+    // math::add(deposited, amount) overflows on the next top_up.
+    //
+    // rate = i128::MAX / 2, duration = 2  =>  deposited = i128::MAX - 1
+    // top_up(rate) adds 1 second, so deposited + rate > i128::MAX => Overflow.
+    // stop + 1 is far from u64::MAX so the checked_add on stop succeeds first.
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START);
+
+    let sender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let token_address = env.register_stellar_asset_contract_v2(issuer).address();
+
+    let rate: i128 = i128::MAX / 2; // 4_611_686_018_427_387_903
+    let duration: u64 = 2;
+    // deposited = rate * 2 = i128::MAX - 1  (fits in i128)
+    StellarAssetClient::new(&env, &token_address).mint(&sender, &i128::MAX);
+
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+    c.create(
+        &sender,
+        &recipient,
+        &token_address,
+        &rate,
+        &START,
+        &(START + duration),
+        &false,
+    );
+
+    // top_up by exactly one rate-unit (1 second worth). After stop += 1 succeeds,
+    // math::add(i128::MAX - 1, rate) overflows i128::MAX.
+    assert_eq!(c.try_top_up(&rate), Err(Ok(Error::Overflow)));
+}
+
 // -------------------------------------------------------------- balance_of
 
 #[test]
