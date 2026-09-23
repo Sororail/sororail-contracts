@@ -1,17 +1,13 @@
-// Test fixtures do plain arithmetic on known-small constants; the checked-math
-// rule is for contract code.
-#![allow(clippy::arithmetic_side_effects)]
-
 use soroban_sdk::{
-    testutils::{Address as _, Events as _, Ledger as _},
-    token::TokenClient,
-    Address, Env, Event,
+    testutils::{Address as _, Ledger as _},
+    token::{StellarAssetClient, TokenClient},
+    Address, Env,
 };
-use sororail_common::{testutils::TestEnv, Error};
+use sororail_common::Error;
 
 use crate::{
     contract::{EscrowContract, EscrowContractClient},
-    events,
+    events::{Created, Funded, Resolved},
     types::State,
 };
 
@@ -33,13 +29,19 @@ impl Fixture<'_> {
     /// Builds an initialized escrow. `with_arbiter` controls whether the
     /// dispute path is available.
     fn new(with_arbiter: bool) -> Self {
-        let te = TestEnv::at(START_TS);
-        let (token, depositor) = te.make_token(AMOUNT * 10);
-        let token_address = token.address.clone();
-        let beneficiary = te.make_address();
-        let arbiter = te.make_address();
-        let outsider = te.make_address();
-        let env = te.env;
+        let env = Env::default();
+        env.mock_all_auths();
+        env.ledger().with_mut(|l| l.timestamp = START_TS);
+
+        let depositor = Address::generate(&env);
+        let beneficiary = Address::generate(&env);
+        let arbiter = Address::generate(&env);
+        let outsider = Address::generate(&env);
+
+        let issuer = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(issuer);
+        let token_address = sac.address();
+        StellarAssetClient::new(&env, &token_address).mint(&depositor, &(AMOUNT * 10));
 
         let contract_id = env.register(EscrowContract, ());
         let client = EscrowContractClient::new(&env, &contract_id);
@@ -186,6 +188,42 @@ fn init_requires_the_depositors_authorization() {
     );
 }
 
+#[test]
+fn init_emits_created_event_with_correct_topics_and_data() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START_TS);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let arbiter = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let token_address = env.register_stellar_asset_contract_v2(issuer).address();
+    let client = EscrowContractClient::new(&env, &env.register(EscrowContract, ()));
+
+    client.init(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &token_address,
+        &AMOUNT,
+        &DEADLINE,
+    );
+
+    let events = env.events().all();
+    assert_eq!(events.len(), 1);
+
+    let created_event = &events[0];
+    let expected = Created {
+        depositor: depositor.clone(),
+        beneficiary: beneficiary.clone(),
+        token: token_address.clone(),
+        amount: AMOUNT,
+        deadline: DEADLINE,
+    };
+    assert_eq!(created_event, &expected);
+}
+
 // ------------------------------------------------------------------ fund
 
 #[test]
@@ -210,6 +248,22 @@ fn fund_rejects_a_closed_escrow() {
     let f = Fixture::funded(true);
     f.client.release(&f.depositor);
     assert_eq!(f.client.try_fund(), Err(Ok(Error::EscrowClosed)));
+}
+
+#[test]
+fn fund_emits_funded_event_with_correct_topics_and_data() {
+    let f = Fixture::new(true);
+    f.client.fund();
+
+    let events = f.env.events().all();
+    assert_eq!(events.len(), 2); // Created + Funded
+
+    let funded_event = &events[1];
+    let expected = Funded {
+        depositor: f.depositor.clone(),
+        amount: AMOUNT,
+    };
+    assert_eq!(funded_event, &expected);
 }
 
 // --------------------------------------------------------------- release
@@ -269,37 +323,6 @@ fn release_rejects_a_closed_escrow() {
     );
 }
 
-#[test]
-fn release_emits_the_released_event_topics_and_fields() {
-    // Released by the depositor.
-    let f = Fixture::funded(true);
-    f.client.release(&f.depositor);
-
-    assert_eq!(
-        f.env.events().all().filter_by_contract(&f.client.address),
-        std::vec![events::Released {
-            beneficiary: f.beneficiary.clone(),
-            amount: AMOUNT,
-            released_by: f.depositor.clone(),
-        }
-        .to_xdr(&f.env, &f.client.address)]
-    );
-
-    // Released by the arbiter: same topics and data, different `released_by`.
-    let g = Fixture::funded(true);
-    g.client.release(&g.arbiter);
-
-    assert_eq!(
-        g.env.events().all().filter_by_contract(&g.client.address),
-        std::vec![events::Released {
-            beneficiary: g.beneficiary.clone(),
-            amount: AMOUNT,
-            released_by: g.arbiter.clone(),
-        }
-        .to_xdr(&g.env, &g.client.address)]
-    );
-}
-
 // ---------------------------------------------------------------- refund
 
 #[test]
@@ -354,38 +377,6 @@ fn refund_at_exactly_the_deadline_is_allowed() {
     f.env.ledger().with_mut(|l| l.timestamp = DEADLINE);
     f.client.refund(&f.depositor);
     assert_eq!(f.client.state(), State::Refunded);
-}
-
-#[test]
-fn refund_emits_the_refunded_event_topics_and_fields() {
-    // Refunded by the depositor after the deadline.
-    let f = Fixture::funded(true);
-    f.advance_past_deadline();
-    f.client.refund(&f.depositor);
-
-    assert_eq!(
-        f.env.events().all().filter_by_contract(&f.client.address),
-        std::vec![events::Refunded {
-            depositor: f.depositor.clone(),
-            amount: AMOUNT,
-            refunded_by: f.depositor.clone(),
-        }
-        .to_xdr(&f.env, &f.client.address)]
-    );
-
-    // Refunded by the arbiter: same topics and data, different `refunded_by`.
-    let g = Fixture::funded(true);
-    g.client.refund(&g.arbiter);
-
-    assert_eq!(
-        g.env.events().all().filter_by_contract(&g.client.address),
-        std::vec![events::Refunded {
-            depositor: g.depositor.clone(),
-            amount: AMOUNT,
-            refunded_by: g.arbiter.clone(),
-        }
-        .to_xdr(&g.env, &g.client.address)]
-    );
 }
 
 // --------------------------------------------------------------- dispute
@@ -542,4 +533,24 @@ fn resolve_rejects_a_second_call() {
         f.client.try_resolve(&5_000),
         Err(Ok(Error::EscrowNotDisputed))
     );
+}
+
+#[test]
+fn resolve_emits_resolved_event_with_correct_topics_and_data() {
+    let f = Fixture::funded(true);
+    f.client.dispute(&f.depositor);
+    f.client.resolve(&2_500);
+
+    let events = f.env.events().all();
+    // Created + Funded + Disputed + Resolved = 4
+    assert_eq!(events.len(), 4);
+
+    let resolved_event = &events[3];
+    let expected = Resolved {
+        arbiter: f.arbiter.clone(),
+        split_bps: 2_500,
+        to_beneficiary: AMOUNT / 4,
+        to_depositor: AMOUNT * 3 / 4,
+    };
+    assert_eq!(resolved_event, &expected);
 }

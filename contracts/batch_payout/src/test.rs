@@ -11,6 +11,7 @@ use sororail_common::Error;
 
 use crate::{
     contract::{BatchPayoutContract, BatchPayoutContractClient},
+    events::Executed,
     types::{Payment, Receipt, MAX_RECIPIENTS},
 };
 
@@ -100,6 +101,18 @@ fn execute_pays_each_recipient_their_own_amount() {
     assert_eq!(f.token.balance(&f.funder), MINT - 357);
     // The contract is a conduit; it holds nothing.
     assert_eq!(f.token.balance(&f.client.address), 0);
+
+    let events = f.env.events().all();
+    assert_eq!(events.len(), 1);
+
+    let executed_event = &events[0];
+    let expected = Executed {
+        funder: f.funder.clone(),
+        token: f.token.address.clone(),
+        count: 3,
+        total: 357,
+    };
+    assert_eq!(executed_event, &expected);
 }
 
 #[test]
