@@ -65,7 +65,7 @@ impl Grant {
             return Ok(0);
         }
         // Everything at the end.
-        let end = self.start.saturating_add(self.duration);
+        let end = self.end_at();
         if effective >= end {
             return Ok(self.total);
         }

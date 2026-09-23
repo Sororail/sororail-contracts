@@ -57,6 +57,18 @@ extended. Use `sororail_common::storage`.
 **Illegal state transitions must error, not panic.** A panic gives the caller a
 useless failure; a typed error tells them what happened.
 
+## Entry Point Anatomy
+
+New contract entry points should follow the same order every time so review can focus on behavior instead of rediscovering authorization and state assumptions:
+
+1. Load the minimal state needed to decide whether the caller is a member of the operation.
+2. Check membership or role eligibility before prompting a signature.
+3. Call `require_auth` only for an address that is already allowed to act.
+4. Check operation-specific flags such as `cancellable` or `revocable` after the caller has been established as an eligible party.
+5. Perform arithmetic through `sororail_common::math` and write state through the common storage helpers so TTL handling stays consistent.
+6. Return typed errors for rejected state transitions instead of panicking.
+
+This keeps stream, vesting, and escrow entry points aligned: membership first, authentication second, state-specific business rules third, and mutation last.
 ## Conventions
 
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org),
