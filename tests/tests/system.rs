@@ -266,6 +266,32 @@ fn contracts_sharing_a_token_stay_isolated() {
     s.assert_nothing_lost(&parties);
 }
 
+/// Attempting to cancel a non-cancellable stream should fail.
+#[test]
+fn cannot_cancel_non_cancellable_stream() {
+    let s = System::new();
+    let recipient = Address::generate(&s.env);
+    let parties = [&recipient];
+
+    // Create a non-cancellable stream
+    s.stream.create(
+        &s.employer,
+        &recipient,
+        &s.token.address,
+        &10,
+        &START,
+        &(START + 1_000),
+        &false, // Not cancellable
+    );
+    s.assert_nothing_lost(&parties);
+
+    // Attempt to cancel the stream and assert the error
+    let result = s.stream.try_cancel();
+    assert_eq!(result, Err(Ok(sororail_common::Error::StreamNotCancellable)));
+    s.assert_nothing_lost(&parties);
+}
+
+
 /// Cancelling and revoking in the same window returns exactly the unearned
 /// portion of each, and nothing more.
 #[test]
