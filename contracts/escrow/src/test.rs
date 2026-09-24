@@ -7,7 +7,7 @@ use sororail_common::Error;
 
 use crate::{
     contract::{EscrowContract, EscrowContractClient},
-    events::{Created, Funded, Resolved},
+    events::{Created, Disputed, Funded, Resolved},
     types::State,
 };
 
@@ -434,6 +434,22 @@ fn dispute_requires_funding_first() {
         f.client.try_dispute(&f.depositor),
         Err(Ok(Error::EscrowNotFunded))
     );
+}
+
+#[test]
+fn dispute_emits_disputed_event_with_correct_topics_and_data() {
+    let f = Fixture::funded(true);
+    f.client.dispute(&f.depositor);
+
+    let events = f.env.events().all();
+    // Created + Funded + Disputed = 3
+    assert_eq!(events.len(), 3);
+
+    let disputed_event = &events[2];
+    let expected = Disputed {
+        raised_by: f.depositor.clone(),
+    };
+    assert_eq!(disputed_event, &expected);
 }
 
 #[test]
