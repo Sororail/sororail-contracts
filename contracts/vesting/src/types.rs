@@ -71,7 +71,12 @@ impl Grant {
         }
 
         // Linear in between. `duration` is non-zero because `end > effective
-        // >= cliff_at >= start` implies `end > start`.
+        // >= cliff_at >= start` implies `end > start`. `create` rejects
+        // `duration == 0`, so this holds for every stored grant.
+        debug_assert!(
+            self.duration > 0,
+            "linear vesting branch requires non-zero duration"
+        );
         let elapsed = math::sub(effective as i128, self.start as i128)?;
         math::mul_div(self.total, elapsed, self.duration as i128)
     }

@@ -212,6 +212,7 @@ impl EscrowContract {
     /// Always called after the state transition has been persisted, so a
     /// reentrant token cannot observe a stale state.
     fn pay(env: &Env, escrow: &Escrow, to: &Address, amount: i128) {
+        debug_assert!(amount > 0, "pay requires a positive amount");
         token::TokenClient::new(env, &escrow.token).transfer(
             &env.current_contract_address(),
             to,

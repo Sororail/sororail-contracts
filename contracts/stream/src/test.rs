@@ -735,6 +735,35 @@ fn extend_rejects_a_stop_that_is_not_later() {
 }
 
 #[test]
+fn extend_rejects_funding_that_overflows() {
+    // rate = i128::MAX over a 1-second span funds exactly i128::MAX (the
+    // boundary pinned by `create_allows_the_exact_max_funding_boundary`).
+    // Extending by 2 more seconds needs MAX * 2, which overflows i128, so
+    // `extend` must report Overflow rather than wrap.
+    let te = TestEnv::at(START);
+    let (token_client, sender) = te.make_token(i128::MAX);
+    let token = token_client.address.clone();
+    let recipient = te.make_address();
+    let c = StreamContractClient::new(&te.env, &te.env.register(StreamContract, ()));
+    c.create(
+        &sender,
+        &recipient,
+        &token,
+        &i128::MAX,
+        &START,
+        &(START + 1),
+        &true,
+    );
+
+    assert_eq!(c.try_extend(&(START + 3)), Err(Ok(Error::Overflow)));
+
+    // The failed call changed nothing.
+    let s = c.get();
+    assert_eq!(s.stop, START + 1);
+    assert_eq!(s.deposited, i128::MAX);
+}
+
+#[test]
 fn extend_is_rejected_after_cancellation() {
     let f = Fixture::new(true);
     f.client.cancel();

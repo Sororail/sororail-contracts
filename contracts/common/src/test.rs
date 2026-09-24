@@ -94,6 +94,25 @@ fn split_bps_endpoints_are_whole() {
     assert_eq!(math::split_bps(777, MAX_BPS), Ok((777, 0)));
 }
 
+/// Non-terminating fractions truncate in `mul_bps`, but the remainder leg of
+/// `split_bps` must still reconstruct the original amount exactly.
+#[test]
+fn split_bps_conserves_on_non_terminating_fractions() {
+    // 3 * 3333 / 10000 truncates to 0; 1 * 5000 / 10000 truncates to 0;
+    // 7 * 1 / 10000 truncates to 0. The second leg carries the dust.
+    assert_eq!(math::split_bps(3, 3_333), Ok((0, 3)));
+    assert_eq!(math::split_bps(1, 5_000), Ok((0, 1)));
+    assert_eq!(math::split_bps(7, 1), Ok((0, 7)));
+    for (amount, bps) in [(3i128, 3_333u32), (1, 5_000), (7, 1)] {
+        let (first, second) = math::split_bps(amount, bps).unwrap();
+        assert_eq!(
+            math::add(first, second).unwrap(),
+            amount,
+            "split of {amount} at {bps}bps did not conserve"
+        );
+    }
+}
+
 #[test]
 fn amount_guards() {
     assert_eq!(math::require_positive(1), Ok(()));

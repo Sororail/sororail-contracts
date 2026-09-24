@@ -247,6 +247,7 @@ impl StreamContract {
 impl StreamContract {
     /// Pulls `amount` of the streamed token from the sender into this contract.
     fn pull(env: &Env, stream: &Stream, amount: i128) {
+        debug_assert!(amount > 0, "pull requires a positive amount");
         token::TokenClient::new(env, &stream.token).transfer(
             &stream.sender,
             env.current_contract_address(),
@@ -258,6 +259,7 @@ impl StreamContract {
     ///
     /// Always called after the state change has been persisted.
     fn pay(env: &Env, stream: &Stream, to: &Address, amount: i128) {
+        debug_assert!(amount > 0, "pay requires a positive amount");
         token::TokenClient::new(env, &stream.token).transfer(
             &env.current_contract_address(),
             to,
