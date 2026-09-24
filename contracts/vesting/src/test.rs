@@ -182,6 +182,75 @@ fn vesting_reports_overflow_rather_than_wrapping() {
     assert_eq!(g.vested_amount(START + 500), Err(Error::Overflow));
 }
 
+/// Guards the division by `duration` in the linear branch of
+/// `vested_amount`: every `(start, cliff, duration)` combination here
+/// satisfies `create`'s validation (`duration > 0`, `cliff <= duration`), and
+/// no probe timestamp may surface `DivisionByZero`.
+#[test]
+fn linear_branch_never_divides_by_zero_duration() {
+    let env = Env::default();
+    let starts = [0u64, 1, START, u64::MAX - 1_000, u64::MAX];
+    let schedules = [
+        (0u64, 1u64),
+        (1, 1),
+        (0, DURATION),
+        (CLIFF, DURATION),
+        (DURATION, DURATION),
+        (0, u64::MAX),
+    ];
+
+    for start in starts {
+        for (cliff, duration) in schedules {
+            // Mirror `create`'s validation: only valid schedules are stored.
+            assert!(duration > 0);
+            assert!(cliff <= duration);
+            let g = Grant {
+                grantor: Address::generate(&env),
+                beneficiary: Address::generate(&env),
+                token: Address::generate(&env),
+                total: TOTAL,
+                start,
+                cliff,
+                duration,
+                revocable: true,
+                claimed: 0,
+                returned: 0,
+                revoked_at: None,
+            };
+            let cliff_at = g.cliff_at();
+            let end = g.end_at();
+            let probes = [
+                0,
+                start.saturating_sub(1),
+                start,
+                cliff_at.saturating_sub(1),
+                cliff_at,
+                end.saturating_sub(1),
+                end,
+                end.saturating_add(1),
+                u64::MAX,
+            ];
+            for at in probes {
+                let result = g.vested_amount(at);
+                assert_ne!(
+                    result,
+                    Err(Error::DivisionByZero),
+                    "div-by-zero at start={start} cliff={cliff} duration={duration} at={at}"
+                );
+                // When the linear branch is taken, the divisor is non-zero.
+                let in_linear = at >= cliff_at && at < end;
+                if in_linear {
+                    assert!(
+                        g.duration > 0,
+                        "linear branch hit with zero duration at start={start}"
+                    );
+                    assert!(result.is_ok());
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn long_duration_large_total_stays_inside_documented_safe_range() {
     let env = Env::default();

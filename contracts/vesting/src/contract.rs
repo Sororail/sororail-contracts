@@ -191,6 +191,7 @@ impl VestingContract {
     ///
     /// Always called after the state change has been persisted.
     fn pay(env: &Env, grant: &Grant, to: &Address, amount: i128) {
+        debug_assert!(amount > 0, "pay requires a positive amount");
         token::TokenClient::new(env, &grant.token).transfer(
             &env.current_contract_address(),
             to,
