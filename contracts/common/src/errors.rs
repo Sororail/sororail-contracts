@@ -53,6 +53,8 @@ pub enum Error {
     InsufficientBalance = 13,
     /// A duration was zero where a positive span is required.
     InvalidDuration = 14,
+    /// The two counterparties of a transfer must differ.
+    IdenticalParties = 15,
 
     // ----- escrow: 20–39 -----
     /// `fund` called on an escrow that is not in `Created`.
@@ -99,7 +101,7 @@ pub enum Error {
     RecurringNotFound = 80,
     /// The authorization has been cancelled.
     RecurringCancelled = 81,
-    /// The current period has already been charged.
+    /// `charge` called before `next_chargeable_at` (including the first charge).
     RecurringPeriodNotElapsed = 82,
     /// `max_periods` has been exhausted.
     RecurringExhausted = 83,

@@ -8,6 +8,7 @@
 //! |---|---|
 //! | [`Error::AlreadyInitialized`] | `create` on an initialized instance |
 //! | [`Error::NotInitialized`] | any entry point before `create` |
+//! | [`Error::IdenticalParties`] | `create` with `sender == recipient` |
 //! | [`Error::InvalidAmount`] | non-positive rate or withdrawal; `top_up` not a multiple of the rate |
 //! | [`Error::InvalidTimeRange`] | `create` with `stop <= start`; `top_up` overflowing `stop` |
 //! | [`Error::Overflow`] | funding or accrual exceeding `i128` |
