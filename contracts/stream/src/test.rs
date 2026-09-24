@@ -837,3 +837,43 @@ fn conservation_holds_across_a_full_mixed_lifecycle() {
         MINT
     );
 }
+
+#[test]
+fn deposited_calculation_matches_across_top_ups_and_extends() {
+    let f = Fixture::new(true);
+    let mut s = f.client.get();
+    assert_eq!(s.deposited, RATE * (s.stop - s.start) as i128);
+
+    // First top_up: add 100 seconds of funding
+    f.client.top_up(&(RATE * 100));
+    s = f.client.get();
+    assert_eq!(s.deposited, RATE * (s.stop - s.start) as i128);
+
+    // First extend: move stop forward by 50 seconds
+    f.client.extend(&(s.stop + 50));
+    s = f.client.get();
+    assert_eq!(s.deposited, RATE * (s.stop - s.start) as i128);
+
+    // Second top_up: add 200 seconds
+    f.client.top_up(&(RATE * 200));
+    s = f.client.get();
+    assert_eq!(s.deposited, RATE * (s.stop - s.start) as i128);
+
+    // Second extend: move stop forward by 75 seconds
+    f.client.extend(&(s.stop + 75));
+    s = f.client.get();
+    assert_eq!(s.deposited, RATE * (s.stop - s.start) as i128);
+
+    // Third top_up: add 150 seconds
+    f.client.top_up(&(RATE * 150));
+    s = f.client.get();
+    assert_eq!(s.deposited, RATE * (s.stop - s.start) as i128);
+
+    // Third extend: move stop forward by 300 seconds
+    f.client.extend(&(s.stop + 300));
+    s = f.client.get();
+    assert_eq!(s.deposited, RATE * (s.stop - s.start) as i128);
+
+    // Verify conservation still holds after all operations
+    f.assert_conserved();
+}

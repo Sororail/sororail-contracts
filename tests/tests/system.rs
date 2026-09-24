@@ -412,3 +412,83 @@ fn a_full_size_batch_runs_within_a_populated_system() {
     let paid_out: i128 = 100 * sororail_batch_payout::MAX_RECIPIENTS as i128;
     assert_eq!(s.balance(&s.employer), MINT - paid_out - 1_000);
 }
+
+/// Payroll workflow combining batch_payout for immediate multi-recipient payments
+/// and recurring for ongoing vendor subscriptions. Both operate on the same token
+/// and employer account, demonstrating the "Payroll (batch_payout + recurring)"
+/// feature from SPEC.md that uses both contracts in a real workflow.
+#[test]
+fn batch_and_recurring_payroll_workflow() {
+    let s = System::new();
+
+    let contractor_a = Address::generate(&s.env);
+    let contractor_b = Address::generate(&s.env);
+    let vendor = Address::generate(&s.env);
+    let parties = [&contractor_a, &contractor_b, &vendor];
+
+    // --- Immediate payroll via batch: pay multiple contractors at once ---
+    let payroll = vec![
+        &s.env,
+        Payment {
+            to: contractor_a.clone(),
+            amount: 1_000_000,
+        },
+        Payment {
+            to: contractor_b.clone(),
+            amount: 750_000,
+        },
+    ];
+    let receipt = s.batch.execute(&s.employer, &s.token.address, &payroll);
+    assert_eq!(receipt.total, 1_750_000);
+    s.assert_nothing_lost(&parties);
+
+    // --- Recurring subscription: employer authorizes vendor for monthly charges ---
+    // Same employer funding both the batch payroll and the vendor subscription
+    s.recurring.authorize(
+        &s.employer,
+        &vendor,
+        &s.token.address,
+        &100_000,
+        &MONTH,
+        &Some(12),
+    );
+    let expiry = s.env.ledger().sequence() + 500_000;
+    s.token
+        .approve(&s.employer, &s.recurring.address, &MINT, &expiry);
+    s.assert_nothing_lost(&parties);
+
+    // --- First month: vendor pulls subscription charge ---
+    s.at(START + MONTH);
+    s.recurring.charge();
+    assert_eq!(s.balance(&vendor), 100_000);
+    s.assert_nothing_lost(&parties);
+
+    // --- Second month: another batch payout for contractors, vendor charges again ---
+    s.at(START + MONTH * 2);
+    let bonus_payroll = vec![
+        &s.env,
+        Payment {
+            to: contractor_a.clone(),
+            amount: 250_000,
+        },
+        Payment {
+            to: contractor_b.clone(),
+            amount: 200_000,
+        },
+    ];
+    s.batch.execute(&s.employer, &s.token.address, &bonus_payroll);
+    s.recurring.charge();
+    assert_eq!(s.balance(&vendor), 200_000);
+    s.assert_nothing_lost(&parties);
+
+    // Verify total conservation across batch and recurring contracts and parties
+    assert_eq!(
+        s.balance(&contractor_a)
+            + s.balance(&contractor_b)
+            + s.balance(&vendor)
+            + s.balance(&s.employer)
+            + s.balance(&s.batch.address)
+            + s.balance(&s.recurring.address),
+        MINT
+    );
+}

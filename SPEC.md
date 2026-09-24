@@ -167,6 +167,7 @@ Scheduled release against a schedule, with a cliff.
 - `vested_amount(at: u64)` — pure view, testable in isolation
 - Linear vesting after cliff. Nothing claimable before cliff. Fully vested at `start + duration`.
 - `cliff` and `duration` are spans in seconds from `start`, not absolute timestamps. `cliff == duration` is a legal all-or-nothing unlock.
+- Grants are immutable once created — no `top_up` or `extend` like `stream` provides. Issue a new grant for additional allocations.
 
 #### `recurring`
 
