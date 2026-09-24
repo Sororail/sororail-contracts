@@ -375,6 +375,59 @@ fn entry_points_error_before_create() {
 }
 
 #[test]
+fn create_with_contract_as_recipient_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START);
+    let sender = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(issuer).address();
+    let contract_id = env.register(StreamContract, ());
+    let client = StreamContractClient::new(&env, &contract_id);
+
+    StellarAssetClient::new(&env, &token).mint(&sender, &(RATE * 1000));
+
+    let result = client.try_create(&sender, &contract_id, &token, &RATE, &START, &STOP, &true);
+    assert!(result.is_ok(), "create with contract as recipient should succeed");
+}
+
+#[test]
+fn create_rejects_multiple_invalid_args_in_order() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START);
+    let sender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(issuer).address();
+    let contract_id = env.register(StreamContract, ());
+    let client = StreamContractClient::new(&env, &contract_id);
+
+    // AlreadyInitialized comes before InvalidTimeRange
+    client.create(&sender, &recipient, &token, &RATE, &START, &STOP, &true);
+    assert_eq!(
+        client.try_create(&sender, &recipient, &token, &RATE, &START, &START, &true),
+        Err(Ok(Error::AlreadyInitialized))
+    );
+
+    // IdenticalParties check comes before rate validation
+    let contract_id2 = env.register(StreamContract, ());
+    let client2 = StreamContractClient::new(&env, &contract_id2);
+    assert_eq!(
+        client2.try_create(&sender, &sender, &token, &0, &START, &STOP, &true),
+        Err(Ok(Error::IdenticalParties))
+    );
+
+    // InvalidTimeRange check comes before overflow check
+    let contract_id3 = env.register(StreamContract, ());
+    let client3 = StreamContractClient::new(&env, &contract_id3);
+    assert_eq!(
+        client3.try_create(&sender, &recipient, &token, &RATE, &STOP, &START, &true),
+        Err(Ok(Error::InvalidTimeRange))
+    );
+}
+
+#[test]
 #[should_panic]
 fn create_requires_the_senders_authorization() {
     let env = Env::default();
