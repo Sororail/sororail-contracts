@@ -6,7 +6,9 @@ use soroban_sdk::contracterror;
 ///
 /// These numbers are part of the public ABI. A client decodes an on-chain
 /// failure by its integer, so **a released variant is never renumbered and
-/// never removed**. Deprecate instead, and leave the number burned.
+/// never removed**. Deprecate instead, and leave the number burned. The
+/// `error_discriminants_match_the_published_abi_table` test in this crate
+/// pins every discriminant so an accidental renumber fails CI.
 ///
 /// New variants are appended inside the owning range. The ranges are:
 ///

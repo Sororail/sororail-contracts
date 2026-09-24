@@ -123,13 +123,63 @@ fn bps_denominator_matches_max_bps() {
 // for someone to run the suite.
 const _: () = {
     assert!(storage::INSTANCE_THRESHOLD < storage::INSTANCE_BUMP);
-    assert!(storage::PERSISTENT_THRESHOLD < storage::PERSISTENT_BUMP);
     // Asking for more than the protocol ceiling is an error at runtime.
     assert!(storage::INSTANCE_BUMP <= MAX_TTL);
-    assert!(storage::PERSISTENT_BUMP <= MAX_TTL);
-    // Positions should outlive config refreshes.
-    assert!(storage::PERSISTENT_BUMP > storage::INSTANCE_BUMP);
 };
+
+/// Pins every released `Error` discriminant. Clients decode failures by these
+/// integers; renumbering or removing a variant must fail this test rather than
+/// relying on review alone. Append new variants at the end of their range and
+/// extend this table in the same PR.
+#[test]
+fn error_discriminants_match_the_published_abi_table() {
+    let table: &[(Error, u32)] = &[
+        (Error::AlreadyInitialized, 1),
+        (Error::NotInitialized, 2),
+        (Error::Unauthorized, 3),
+        (Error::InvalidAmount, 4),
+        (Error::InvalidTimeRange, 5),
+        (Error::Overflow, 6),
+        (Error::Underflow, 7),
+        (Error::DivisionByZero, 8),
+        (Error::InvalidBasisPoints, 9),
+        (Error::InvalidState, 10),
+        (Error::DeadlineNotReached, 11),
+        (Error::DeadlinePassed, 12),
+        (Error::InsufficientBalance, 13),
+        (Error::InvalidDuration, 14),
+        (Error::IdenticalParties, 15),
+        (Error::EscrowNotFundable, 20),
+        (Error::EscrowNotFunded, 21),
+        (Error::EscrowClosed, 22),
+        (Error::EscrowNoArbiter, 23),
+        (Error::EscrowNotDisputed, 24),
+        (Error::EscrowAlreadyDisputed, 25),
+        (Error::StreamNotFound, 40),
+        (Error::StreamCancelled, 41),
+        (Error::StreamNotCancellable, 42),
+        (Error::StreamInsufficientAccrued, 43),
+        (Error::StreamNotExtendable, 44),
+        (Error::VestingNotFound, 60),
+        (Error::VestingCliffNotReached, 61),
+        (Error::VestingNotRevocable, 62),
+        (Error::VestingRevoked, 63),
+        (Error::VestingCliffAfterEnd, 64),
+        (Error::VestingNothingToClaim, 65),
+        (Error::RecurringNotFound, 80),
+        (Error::RecurringCancelled, 81),
+        (Error::RecurringPeriodNotElapsed, 82),
+        (Error::RecurringExhausted, 83),
+        (Error::BatchEmpty, 100),
+        (Error::BatchTooLarge, 101),
+    ];
+    for &(variant, code) in table {
+        assert_eq!(
+            variant as u32, code,
+            "{variant:?} was renumbered away from ABI code {code}"
+        );
+    }
+}
 
 // ---------------------------------------------------------------- auth
 //

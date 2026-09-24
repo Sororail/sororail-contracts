@@ -212,6 +212,14 @@ fn a_batch_the_funder_cannot_afford_pays_nobody() {
     assert_eq!(f.token.balance(&f.funder), MINT);
 }
 
+
+/// Same host-revert guarantee as the other contracts: a failed mid-batch
+/// transfer leaves no partial mutation (batch_payout is otherwise stateless).
+#[test]
+fn execute_reverts_cleanly_when_a_transfer_fails() {
+    a_batch_the_funder_cannot_afford_pays_nobody();
+}
+
 #[test]
 fn paying_the_same_address_twice_is_allowed() {
     // Duplicates are legitimate -- two invoices for one contractor -- and are

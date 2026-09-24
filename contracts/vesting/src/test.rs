@@ -267,6 +267,34 @@ fn create_rejects_a_cliff_after_the_end() {
     );
 }
 
+/// When several create inputs are invalid at once, the first check in
+/// `create`'s validation sequence wins. Locks the order:
+/// `require_positive(total)` → `duration == 0` → `cliff > duration`.
+#[test]
+fn create_reports_the_first_validation_error_when_several_apply() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = VestingContractClient::new(&env, &env.register(VestingContract, ()));
+    let (a, b, t) = (
+        Address::generate(&env),
+        Address::generate(&env),
+        Address::generate(&env),
+    );
+
+    // total=-1, duration=0, cliff=5: InvalidAmount beats InvalidDuration /
+    // VestingCliffAfterEnd.
+    assert_eq!(
+        c.try_create(&a, &b, &t, &-1, &START, &5, &0, &true),
+        Err(Ok(Error::InvalidAmount))
+    );
+
+    // total ok, duration=0, cliff=5: InvalidDuration beats VestingCliffAfterEnd.
+    assert_eq!(
+        c.try_create(&a, &b, &t, &TOTAL, &START, &5, &0, &true),
+        Err(Ok(Error::InvalidDuration))
+    );
+}
+
 #[test]
 fn create_rejects_a_second_call() {
     let f = Fixture::new(true);
@@ -296,6 +324,34 @@ fn create_rejects_identical_grantor_and_beneficiary() {
         c.try_create(&party, &party, &token, &TOTAL, &START, &CLIFF, &DURATION, &true),
         Err(Ok(Error::IdenticalParties))
     );
+}
+
+/// `create` persists the grant before the token pull. A failed transfer must
+/// roll back that write so `get` still returns `NotInitialized`.
+#[test]
+fn create_reverts_cleanly_when_grantor_cannot_fund() {
+    let te = TestEnv::at(START);
+    let (token_client, grantor) = te.make_token(1);
+    let token = token_client.address.clone();
+    let beneficiary = te.make_address();
+    let env = te.env;
+    let c = VestingContractClient::new(&env, &env.register(VestingContract, ()));
+
+    assert!(c
+        .try_create(
+            &grantor,
+            &beneficiary,
+            &token,
+            &TOTAL,
+            &START,
+            &CLIFF,
+            &DURATION,
+            &true
+        )
+        .is_err());
+    assert_eq!(c.try_get(), Err(Ok(Error::NotInitialized)));
+    assert_eq!(token_client.balance(&c.address), 0);
+    assert_eq!(token_client.balance(&grantor), 1);
 }
 
 /// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
