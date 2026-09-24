@@ -14,5 +14,9 @@
 //! | [`Error::RecurringCancelled`] | `charge` or `cancel` after cancellation |
 //! | [`Error::RecurringPeriodNotElapsed`] | `charge` before `next_chargeable_at` |
 //! | [`Error::RecurringExhausted`] | `charge` once `max_periods` is reached |
+//!
+//! As with `stream` and `vesting`, `Unauthorized` does not appear: `charge` acts
+//! on a single fixed party (the payee), so a wrong caller fails at `require_auth`
+//! rather than at a membership check.
 
 pub use sororail_common::Error;
