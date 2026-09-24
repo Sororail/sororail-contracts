@@ -11,6 +11,7 @@ use sororail_common::{testutils::TestEnv, Error};
 
 use crate::{
     contract::{VestingContract, VestingContractClient},
+    events::Revoked,
     types::Grant,
 };
 
@@ -565,6 +566,29 @@ fn revoke_requires_the_grantors_authorization() {
     f.at(START + 300);
     f.env.set_auths(&[]);
     f.client.revoke();
+}
+
+#[test]
+fn revoke_emits_the_revoked_event() {
+    let f = Fixture::new(true);
+    f.at(START + 300);
+    f.client.revoke();
+
+    // At t = START + 300 with DURATION = 1_000 and TOTAL = 1_000_000:
+    // vested = TOTAL * 300 / 1000 = 300_000 (still claimable)
+    // returned = TOTAL * 700 / 1000 = 700_000
+    let expected = Revoked {
+        grantor: f.grantor.clone(),
+        returned_to_grantor: TOTAL * 7 / 10,
+        still_claimable: TOTAL * 3 / 10,
+        revoked_at: START + 300,
+    };
+    // filter_by_contract returns ContractEvents; .events() gives &[ContractEvent].
+    // The contract emits `created` at setup and `revoked` here — take the last one.
+    let all = f.env.events().all().filter_by_contract(&f.client.address);
+    let events = all.events();
+    let last = events.last().expect("no events emitted");
+    assert_eq!(last, &expected.to_xdr(&f.env, &f.client.address));
 }
 
 // ------------------------------------------------------- conservation
