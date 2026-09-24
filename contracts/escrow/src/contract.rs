@@ -181,10 +181,19 @@ impl EscrowContract {
     /// the remainder goes to the depositor. The remainder is computed by
     /// subtraction, so the two payments always sum to exactly the escrowed
     /// amount with no rounding leakage.
+    ///
+    /// # Invariants
+    ///
+    /// `resolve` is only callable from `State::Disputed`, which can only be
+    /// reached via `dispute`, which requires `escrow.arbiter.is_some()`.
+    /// Therefore an arbiter is guaranteed to exist here — no need to handle
+    /// the `None` case (#105).
     pub fn resolve(env: Env, split_bps: u32) -> Result<(), Error> {
         let mut escrow = storage::load(&env)?;
         auth::require(escrow.state == State::Disputed, Error::EscrowNotDisputed)?;
-        let arbiter = escrow.arbiter.clone().ok_or(Error::EscrowNoArbiter)?;
+        // SAFETY: `dispute` requires `arbiter.is_some()`, so reaching
+        // `State::Disputed` guarantees an arbiter exists (#105).
+        let arbiter = escrow.arbiter.clone().expect("dispute requires an arbiter");
         arbiter.require_auth();
 
         let (to_beneficiary, to_depositor) = math::split_bps(escrow.amount, split_bps)?;

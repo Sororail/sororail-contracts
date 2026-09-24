@@ -21,7 +21,7 @@
 //! | [`Error::EscrowNotFundable`] | `fund` when not in `Created` |
 //! | [`Error::EscrowNotFunded`] | `release`/`refund`/`dispute` when not in `Funded` |
 //! | [`Error::EscrowClosed`] | any transition from a terminal state |
-//! | [`Error::EscrowNoArbiter`] | `dispute`/`resolve` with no arbiter configured |
+//! | [`Error::EscrowNoArbiter`] | `dispute` with no arbiter configured (`resolve` is unreachable — see invariant in `contract.rs`) |
 //! | [`Error::EscrowNotDisputed`] | `resolve` when not in `Disputed` |
 //! | [`Error::EscrowAlreadyDisputed`] | `dispute` when already disputed |
 
