@@ -2,8 +2,11 @@
 
 ## Stellar testnet
 
-Deployed 2026-09-07 from commit `e60862c` (plus the `Payments` alias fix noted
-below), built with soroban-sdk 27.0.6 and the `stellar` CLI 27.1.0.
+Deployed 2026-09-07 from commit
+[`0e55857`](https://github.com/Sororail/sororail-contracts/commit/0e558578f188c139e007a80914ec4707e265840f)
+(`0e558578f188c139e007a80914ec4707e265840f`), built with soroban-sdk 27.0.6 and
+the `stellar` CLI 27.1.0. That commit includes the `Payments` alias fix described
+below; rebuild from this exact SHA to reproduce the wasm.
 
 | Contract | Address |
 |---|---|

@@ -17,6 +17,8 @@ impl VestingContract {
     ///
     /// The full total is pulled from the grantor immediately -- a grant is
     /// never partially funded.
+    ///
+    /// `grantor` and `beneficiary` must differ; a self-grant is rejected.
     #[allow(clippy::too_many_arguments)]
     pub fn create(
         env: Env,
@@ -31,6 +33,9 @@ impl VestingContract {
     ) -> Result<(), Error> {
         if storage::is_initialized(&env) {
             return Err(Error::AlreadyInitialized);
+        }
+        if grantor == beneficiary {
+            return Err(Error::IdenticalParties);
         }
         math::require_positive(total)?;
         if duration == 0 {
