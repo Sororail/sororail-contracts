@@ -73,3 +73,11 @@ pub struct Resolved {
     pub to_beneficiary: i128,
     pub to_depositor: i128,
 }
+
+/// The depositor cancelled a Created escrow before funding it.
+#[contractevent(topics = ["escrow", "cancelled"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Cancelled {
+    #[topic]
+    pub depositor: Address,
+}
