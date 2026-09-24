@@ -83,13 +83,15 @@ impl RecurringContract {
     /// rather than banked -- see [`Authorization`] for why.
     pub fn charge(env: Env) -> Result<i128, Error> {
         let mut authorization = storage::load(&env)?;
+        // Require auth before state checks so unauthenticated callers cannot
+        // probe contract state via typed errors (CONTRIBUTING.md convention).
+        authorization.payee.require_auth();
         if authorization.cancelled {
             return Err(Error::RecurringCancelled);
         }
         if authorization.is_exhausted() {
             return Err(Error::RecurringExhausted);
         }
-        authorization.payee.require_auth();
 
         let now = env.ledger().timestamp();
         if now < authorization.next_chargeable_at {

@@ -808,3 +808,33 @@ fn resolve_emits_resolved_event_with_correct_topics_and_data() {
     };
     assert_eq!(resolved_event, &expected);
 }
+
+// -------------------------------------------------- negative auth tests (#108)
+
+#[test]
+#[should_panic]
+fn fund_requires_the_depositors_authorization() {
+    let f = Fixture::new(true);
+    // Clear auths so require_auth bites.
+    f.env.set_auths(&[]);
+    f.client.fund();
+}
+
+#[test]
+#[should_panic]
+fn resolve_requires_the_arbiters_authorization() {
+    let f = Fixture::funded(true);
+    f.client.dispute(&f.depositor);
+    // Clear auths so require_auth bites.
+    f.env.set_auths(&[]);
+    f.client.resolve(&5_000);
+}
+
+#[test]
+#[should_panic]
+fn release_requires_callers_authorization() {
+    let f = Fixture::funded(true);
+    // Clear auths so require_auth bites.
+    f.env.set_auths(&[]);
+    f.client.release(&f.depositor);
+}

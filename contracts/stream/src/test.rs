@@ -959,3 +959,36 @@ fn deposited_calculation_matches_across_top_ups_and_extends() {
     // Verify conservation still holds after all operations
     f.assert_conserved();
 }
+
+// ----------------------------------------------- negative auth tests (#109)
+
+#[test]
+#[should_panic]
+fn cancel_requires_the_senders_authorization() {
+    let f = Fixture::new(true);
+    f.at(START + 100);
+    // Clear auths so require_auth bites.
+    f.env.set_auths(&[]);
+    f.client.cancel();
+}
+
+#[test]
+#[should_panic]
+fn top_up_requires_the_senders_authorization() {
+    let f = Fixture::new(true);
+    f.at(START + 100);
+    // Clear auths so require_auth bites.
+    f.env.set_auths(&[]);
+    f.client.top_up(&(RATE * 100));
+}
+
+#[test]
+#[should_panic]
+fn extend_requires_the_senders_authorization() {
+    let f = Fixture::new(true);
+    f.at(START + 100);
+    let s = f.client.get();
+    // Clear auths so require_auth bites.
+    f.env.set_auths(&[]);
+    f.client.extend(&(s.stop + 100));
+}
