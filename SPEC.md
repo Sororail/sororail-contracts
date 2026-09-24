@@ -381,3 +381,8 @@ Where current documentation contradicts this spec, current documentation wins. N
 Issues labelled `good-first-issue` are scoped so that someone new to Soroban can complete them. Start there, comment to claim, and open a draft PR early — an in-progress PR with questions is more useful than a perfect one that arrives three weeks late.
 
 If you are unsure whether something is in scope, open an issue before writing code.
+
+
+## Updates
+
+Updated documentation for recent changes.

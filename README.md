@@ -170,3 +170,8 @@ scoped so that someone new to Soroban can complete them.
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+
+## Updates
+
+Updated documentation for recent changes.
