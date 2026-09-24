@@ -1,3 +1,7 @@
+// Test fixtures do plain arithmetic on known-small constants; the checked-math
+// rule is for contract code.
+#![allow(clippy::arithmetic_side_effects)]
+
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger as _},
     token::{StellarAssetClient, TokenClient},
@@ -317,6 +321,36 @@ fn charge_fails_once_the_payer_revokes_the_allowance() {
     f.at(START + PERIOD);
     assert!(f.client.try_charge().is_err());
     assert_eq!(f.token.balance(&f.payee), 0);
+}
+
+#[test]
+fn charge_fails_when_allowance_covers_fewer_periods_than_remain() {
+    // The allowance on the token is the real cap. When the allowance is exactly
+    // N periods' worth, charge N times, but charge N+1 fails while periods_charged
+    // stays at N (rollback from the failed transfer_from).
+    let f = Fixture::new(None);
+    let expiry = f.env.ledger().sequence() + 100_000;
+    let two_periods = AMOUNT * 2;
+    f.token
+        .approve(&f.payer, &f.client.address, &two_periods, &expiry);
+
+    // First charge: succeeds.
+    f.at(START + PERIOD);
+    assert_eq!(f.client.charge(), AMOUNT);
+    assert_eq!(f.client.get().periods_charged, 1);
+    assert_eq!(f.token.balance(&f.payee), AMOUNT);
+
+    // Second charge: succeeds, allowance exactly exhausted.
+    f.at(START + PERIOD * 2);
+    assert_eq!(f.client.charge(), AMOUNT);
+    assert_eq!(f.client.get().periods_charged, 2);
+    assert_eq!(f.token.balance(&f.payee), AMOUNT * 2);
+
+    // Third charge: fails because allowance is exhausted.
+    f.at(START + PERIOD * 3);
+    assert!(f.client.try_charge().is_err());
+    // periods_charged must remain 2 after the failed transfer_from.
+    assert_eq!(f.client.get().periods_charged, 2);
 }
 
 #[test]

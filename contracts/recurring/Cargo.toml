@@ -18,3 +18,7 @@ sororail-common = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+sororail-common = { workspace = true, features = ["testutils"] }
+
+[lints]
+workspace = true

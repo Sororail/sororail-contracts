@@ -7,6 +7,7 @@ use sororail_common::Error;
 
 use crate::{
     contract::{EscrowContract, EscrowContractClient},
+    events::{Created, Funded, Resolved},
     types::State,
 };
 
@@ -187,6 +188,42 @@ fn init_requires_the_depositors_authorization() {
     );
 }
 
+#[test]
+fn init_emits_created_event_with_correct_topics_and_data() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START_TS);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let arbiter = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let token_address = env.register_stellar_asset_contract_v2(issuer).address();
+    let client = EscrowContractClient::new(&env, &env.register(EscrowContract, ()));
+
+    client.init(
+        &depositor,
+        &beneficiary,
+        &Some(arbiter.clone()),
+        &token_address,
+        &AMOUNT,
+        &DEADLINE,
+    );
+
+    let events = env.events().all();
+    assert_eq!(events.len(), 1);
+
+    let created_event = &events[0];
+    let expected = Created {
+        depositor: depositor.clone(),
+        beneficiary: beneficiary.clone(),
+        token: token_address.clone(),
+        amount: AMOUNT,
+        deadline: DEADLINE,
+    };
+    assert_eq!(created_event, &expected);
+}
+
 // ------------------------------------------------------------------ fund
 
 #[test]
@@ -211,6 +248,22 @@ fn fund_rejects_a_closed_escrow() {
     let f = Fixture::funded(true);
     f.client.release(&f.depositor);
     assert_eq!(f.client.try_fund(), Err(Ok(Error::EscrowClosed)));
+}
+
+#[test]
+fn fund_emits_funded_event_with_correct_topics_and_data() {
+    let f = Fixture::new(true);
+    f.client.fund();
+
+    let events = f.env.events().all();
+    assert_eq!(events.len(), 2); // Created + Funded
+
+    let funded_event = &events[1];
+    let expected = Funded {
+        depositor: f.depositor.clone(),
+        amount: AMOUNT,
+    };
+    assert_eq!(funded_event, &expected);
 }
 
 // --------------------------------------------------------------- release
@@ -480,4 +533,24 @@ fn resolve_rejects_a_second_call() {
         f.client.try_resolve(&5_000),
         Err(Ok(Error::EscrowNotDisputed))
     );
+}
+
+#[test]
+fn resolve_emits_resolved_event_with_correct_topics_and_data() {
+    let f = Fixture::funded(true);
+    f.client.dispute(&f.depositor);
+    f.client.resolve(&2_500);
+
+    let events = f.env.events().all();
+    // Created + Funded + Disputed + Resolved = 4
+    assert_eq!(events.len(), 4);
+
+    let resolved_event = &events[3];
+    let expected = Resolved {
+        arbiter: f.arbiter.clone(),
+        split_bps: 2_500,
+        to_beneficiary: AMOUNT / 4,
+        to_depositor: AMOUNT * 3 / 4,
+    };
+    assert_eq!(resolved_event, &expected);
 }

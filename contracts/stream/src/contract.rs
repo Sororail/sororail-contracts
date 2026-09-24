@@ -16,6 +16,8 @@ impl StreamContract {
     ///
     /// `start` may be in the past, which backdates accrual -- the sender is
     /// choosing to make funds immediately withdrawable.
+    ///
+    /// `sender` and `recipient` must differ; a self-stream is rejected.
     #[allow(clippy::too_many_arguments)]
     pub fn create(
         env: Env,
@@ -30,11 +32,14 @@ impl StreamContract {
         if storage::is_initialized(&env) {
             return Err(Error::AlreadyInitialized);
         }
+        if sender == recipient {
+            return Err(Error::IdenticalParties);
+        }
         math::require_positive(rate_per_second)?;
         if stop <= start {
             return Err(Error::InvalidTimeRange);
         }
-        let deposited = math::mul(rate_per_second, (stop - start) as i128)?;
+        let deposited = math::mul(rate_per_second, math::sub(stop as i128, start as i128)?)?;
 
         sender.require_auth();
 
@@ -147,11 +152,12 @@ impl StreamContract {
         }
         stream.sender.require_auth();
         math::require_positive(amount)?;
-        if amount % stream.rate_per_second != 0 {
+        if amount.checked_rem(stream.rate_per_second) != Some(0) {
             return Err(Error::InvalidAmount);
         }
 
-        let seconds = math::div(amount, stream.rate_per_second)? as u64;
+        let seconds = u64::try_from(math::div(amount, stream.rate_per_second)?)
+            .map_err(|_| Error::InvalidTimeRange)?;
         stream.stop = stream
             .stop
             .checked_add(seconds)
@@ -181,7 +187,10 @@ impl StreamContract {
             return Err(Error::StreamNotExtendable);
         }
 
-        let added = math::mul(stream.rate_per_second, (new_stop - stream.stop) as i128)?;
+        let added = math::mul(
+            stream.rate_per_second,
+            math::sub(new_stop as i128, stream.stop as i128)?,
+        )?;
         stream.stop = new_stop;
         stream.deposited = math::add(stream.deposited, added)?;
         storage::save(&env, &stream);

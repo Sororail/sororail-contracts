@@ -11,6 +11,8 @@
 //! test ends by summing every balance — every party and every contract
 //! address — and asserting it equals what was minted.
 
+#![allow(clippy::arithmetic_side_effects)]
+
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
     token::{StellarAssetClient, TokenClient},
@@ -263,6 +265,32 @@ fn contracts_sharing_a_token_stay_isolated() {
     assert_eq!(s.balance(&s.stream.address), 0);
     s.assert_nothing_lost(&parties);
 }
+
+/// Attempting to cancel a non-cancellable stream should fail.
+#[test]
+fn cannot_cancel_non_cancellable_stream() {
+    let s = System::new();
+    let recipient = Address::generate(&s.env);
+    let parties = [&recipient];
+
+    // Create a non-cancellable stream
+    s.stream.create(
+        &s.employer,
+        &recipient,
+        &s.token.address,
+        &10,
+        &START,
+        &(START + 1_000),
+        &false, // Not cancellable
+    );
+    s.assert_nothing_lost(&parties);
+
+    // Attempt to cancel the stream and assert the error
+    let result = s.stream.try_cancel();
+    assert_eq!(result, Err(Ok(sororail_common::Error::StreamNotCancellable)));
+    s.assert_nothing_lost(&parties);
+}
+
 
 /// Cancelling and revoking in the same window returns exactly the unearned
 /// portion of each, and nothing more.

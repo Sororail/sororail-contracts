@@ -1,9 +1,14 @@
+// Test fixtures do plain arithmetic on known-small constants; the checked-math
+// rule is for contract code.
+#![allow(clippy::arithmetic_side_effects)]
+
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
-    token::{StellarAssetClient, TokenClient},
-    Address, Env,
+    map,
+    testutils::{Address as _, Events as _, Ledger as _},
+    token::TokenClient,
+    vec, Address, Env, IntoVal, Symbol, Val,
 };
-use sororail_common::Error;
+use sororail_common::{testutils::TestEnv, Error};
 
 use crate::{
     contract::{StreamContract, StreamContractClient},
@@ -28,17 +33,12 @@ struct Fixture<'a> {
 
 impl Fixture<'_> {
     fn new(cancellable: bool) -> Self {
-        let env = Env::default();
-        env.mock_all_auths();
-        env.ledger().with_mut(|l| l.timestamp = START);
-
-        let sender = Address::generate(&env);
-        let recipient = Address::generate(&env);
-        let outsider = Address::generate(&env);
-
-        let issuer = Address::generate(&env);
-        let token_address = env.register_stellar_asset_contract_v2(issuer).address();
-        StellarAssetClient::new(&env, &token_address).mint(&sender, &MINT);
+        let te = TestEnv::at(START);
+        let (token, sender) = te.make_token(MINT);
+        let token_address = token.address.clone();
+        let recipient = te.make_address();
+        let outsider = te.make_address();
+        let env = te.env;
 
         let client = StreamContractClient::new(&env, &env.register(StreamContract, ()));
         client.create(
@@ -235,6 +235,40 @@ fn create_rejects_funding_that_overflows() {
 }
 
 #[test]
+fn create_allows_the_exact_max_funding_boundary() {
+    // `rate_per_second * (stop - start) == i128::MAX` is the largest a stream
+    // can be funded: it must succeed. `i128::MAX` is prime (Mersenne prime
+    // M127), so the only single-second-span way to land exactly on it is
+    // `rate = i128::MAX`, `duration = 1`; one more second overflows (asserted
+    // just above, in `create_rejects_funding_that_overflows`).
+    let te = TestEnv::at(START);
+    let (token_client, sender) = te.make_token(i128::MAX);
+    let token = token_client.address.clone();
+    let recipient = te.make_address();
+    let env = te.env;
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+
+    c.create(
+        &sender,
+        &recipient,
+        &token,
+        &i128::MAX,
+        &START,
+        &(START + 1),
+        &true,
+    );
+
+    let s = c.get();
+    assert_eq!(s.rate_per_second, i128::MAX);
+    assert_eq!(s.stop - s.start, 1);
+    assert_eq!(s.deposited, i128::MAX);
+    assert_eq!(s.withdrawn, 0);
+    assert_eq!(c.remaining(), i128::MAX);
+    assert_eq!(token_client.balance(&c.address), i128::MAX);
+    assert_eq!(token_client.balance(&sender), 0);
+}
+
+#[test]
 fn create_rejects_a_second_call() {
     let f = Fixture::new(true);
     assert_eq!(
@@ -251,6 +285,19 @@ fn create_rejects_a_second_call() {
     );
 }
 
+#[test]
+fn create_rejects_identical_sender_and_recipient() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START);
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+    let party = Address::generate(&env);
+    let token = Address::generate(&env);
+    assert_eq!(
+        c.try_create(&party, &party, &token, &RATE, &START, &STOP, &true),
+        Err(Ok(Error::IdenticalParties))
+    );
+}
 #[test]
 fn entry_points_error_before_create() {
     let env = Env::default();
@@ -329,6 +376,17 @@ fn withdraw_rejects_when_nothing_has_accrued() {
 }
 
 #[test]
+fn withdraw_some_zero_distinctly_from_none_with_zero_accrued() {
+    let f = Fixture::new(true);
+    // Explicit Some(0) flows through unwrap_or untouched into require_positive.
+    // Both None and Some(0) should fail with InvalidAmount when nothing accrued.
+    let none_result = f.client.try_withdraw(&None);
+    let some_zero_result = f.client.try_withdraw(&Some(0));
+    assert_eq!(none_result, Err(Ok(Error::InvalidAmount)));
+    assert_eq!(some_zero_result, Err(Ok(Error::InvalidAmount)));
+}
+
+#[test]
 fn withdrawing_the_whole_stream_after_stop_empties_the_contract() {
     let f = Fixture::new(true);
     f.at(STOP + 10_000);
@@ -354,14 +412,11 @@ fn repeated_withdrawals_never_exceed_the_deposit() {
 #[test]
 #[should_panic]
 fn withdraw_requires_the_recipients_authorization() {
-    let env = Env::default();
-    env.mock_all_auths();
-    env.ledger().with_mut(|l| l.timestamp = START);
-    let sender = Address::generate(&env);
-    let recipient = Address::generate(&env);
-    let issuer = Address::generate(&env);
-    let token = env.register_stellar_asset_contract_v2(issuer).address();
-    StellarAssetClient::new(&env, &token).mint(&sender, &MINT);
+    let te = TestEnv::at(START);
+    let (token_client, sender) = te.make_token(MINT);
+    let token = token_client.address.clone();
+    let recipient = te.make_address();
+    let env = te.env;
     let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
     c.create(&sender, &recipient, &token, &RATE, &START, &STOP, &true);
 
@@ -464,6 +519,44 @@ fn top_up_extends_the_stop_by_the_span_it_buys() {
     f.assert_conserved();
 }
 
+/// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
+/// expected value is spelled out literally rather than built from
+/// `events::ToppedUp`, so renaming a topic or a field fails here.
+#[test]
+fn top_up_emits_the_topped_up_event() {
+    let f = Fixture::new(true);
+    f.client.top_up(&(RATE * 500));
+
+    let env = &f.env;
+    let amount: Val = (RATE * 500).into_val(env);
+    let deposited: Val = (DEPOSITED + RATE * 500).into_val(env);
+    let new_stop: Val = (STOP + 500).into_val(env);
+    // Map data: keys are the field names, serialized in sorted order.
+    let data: Val = map![
+        env,
+        (Symbol::new(env, "amount"), amount),
+        (Symbol::new(env, "deposited"), deposited),
+        (Symbol::new(env, "new_stop"), new_stop),
+    ]
+    .into_val(env);
+    assert_eq!(
+        env.events().all().filter_by_contract(&f.client.address),
+        vec![
+            env,
+            (
+                f.client.address.clone(),
+                vec![
+                    env,
+                    Symbol::new(env, "stream").into_val(env),
+                    Symbol::new(env, "topped_up").into_val(env),
+                    f.sender.into_val(env),
+                ],
+                data,
+            ),
+        ]
+    );
+}
+
 #[test]
 fn top_up_rejects_an_amount_that_is_not_a_whole_number_of_seconds() {
     let f = Fixture::new(true);
@@ -479,6 +572,32 @@ fn top_up_rejects_non_positive_amounts() {
     let f = Fixture::new(true);
     assert_eq!(f.client.try_top_up(&0), Err(Ok(Error::InvalidAmount)));
     assert_eq!(f.client.try_top_up(&(-RATE)), Err(Ok(Error::InvalidAmount)));
+}
+
+#[test]
+fn top_up_rejects_a_span_that_overflows_the_stop_timestamp() {
+    // rate = 1, duration = 1 keeps `deposited` tiny, so this isolates the
+    // `amount / rate` -> u64 conversion: `2^64` seconds is beyond `u64::MAX`,
+    // so extending `stop` by it could not even be represented. The contract
+    // must reject rather than silently truncate the seconds (which would
+    // break the funding invariant).
+    let te = TestEnv::at(START);
+    let (token_client, sender) = te.make_token(i128::MAX);
+    let token = token_client.address.clone();
+    let recipient = te.make_address();
+    let env = te.env;
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+    c.create(&sender, &recipient, &token, &1, &START, &(START + 1), &true);
+
+    assert_eq!(
+        c.try_top_up(&(1_i128 << 64)),
+        Err(Ok(Error::InvalidTimeRange))
+    );
+
+    // The failed call changed nothing.
+    let s = c.get();
+    assert_eq!(s.stop, START + 1);
+    assert_eq!(s.deposited, 1);
 }
 
 #[test]
@@ -528,75 +647,43 @@ fn extend_is_rejected_after_cancellation() {
     );
 }
 
+/// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
+/// expected value is spelled out literally rather than built from
+/// `events::Extended`, so renaming a topic or a field fails here.
 #[test]
-fn extend_rejects_funding_that_overflows() {
-    // rate_per_second = i128::MAX and any new_stop > stop would overflow
-    // math::mul(rate_per_second, (new_stop - stop) as i128).
-    // We create a fresh stream with rate = i128::MAX / 2 + 1 so a 2-second
-    // extension causes overflow, then try to extend it.
-    let env = Env::default();
-    env.mock_all_auths();
-    env.ledger().with_mut(|l| l.timestamp = START);
+fn extend_emits_the_extended_event() {
+    let f = Fixture::new(true);
+    let new_stop_val = STOP + 300;
+    f.client.extend(&new_stop_val);
 
-    let sender = Address::generate(&env);
-    let recipient = Address::generate(&env);
-    let issuer = Address::generate(&env);
-    let token_address = env.register_stellar_asset_contract_v2(issuer).address();
-    // Mint enough for a 1-second stream at this rate.
-    let overflow_rate: i128 = i128::MAX / 2 + 1;
-    StellarAssetClient::new(&env, &token_address).mint(&sender, &overflow_rate);
-
-    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
-    // Create a 1-second stream so extend by 2 seconds overflows.
-    c.create(
-        &sender,
-        &recipient,
-        &token_address,
-        &overflow_rate,
-        &START,
-        &(START + 1),
-        &false,
+    let env = &f.env;
+    let added: Val = (RATE * 300).into_val(env);
+    let deposited: Val = (DEPOSITED + RATE * 300).into_val(env);
+    let new_stop: Val = new_stop_val.into_val(env);
+    // Map data: keys are the field names, serialized in sorted order.
+    let data: Val = map![
+        env,
+        (Symbol::new(env, "added"), added),
+        (Symbol::new(env, "deposited"), deposited),
+        (Symbol::new(env, "new_stop"), new_stop),
+    ]
+    .into_val(env);
+    assert_eq!(
+        env.events().all().filter_by_contract(&f.client.address),
+        vec![
+            env,
+            (
+                f.client.address.clone(),
+                vec![
+                    env,
+                    Symbol::new(env, "stream").into_val(env),
+                    Symbol::new(env, "extended").into_val(env),
+                    f.sender.into_val(env),
+                ],
+                data,
+            ),
+        ]
     );
-
-    assert_eq!(c.try_extend(&(START + 3)), Err(Ok(Error::Overflow)));
-}
-
-#[test]
-fn top_up_rejects_deposited_overflow() {
-    // Arrange a stream whose deposited is already near i128::MAX so that
-    // math::add(deposited, amount) overflows on the next top_up.
-    //
-    // rate = i128::MAX / 2, duration = 2  =>  deposited = i128::MAX - 1
-    // top_up(rate) adds 1 second, so deposited + rate > i128::MAX => Overflow.
-    // stop + 1 is far from u64::MAX so the checked_add on stop succeeds first.
-    let env = Env::default();
-    env.mock_all_auths();
-    env.ledger().with_mut(|l| l.timestamp = START);
-
-    let sender = Address::generate(&env);
-    let recipient = Address::generate(&env);
-    let issuer = Address::generate(&env);
-    let token_address = env.register_stellar_asset_contract_v2(issuer).address();
-
-    let rate: i128 = i128::MAX / 2; // 4_611_686_018_427_387_903
-    let duration: u64 = 2;
-    // deposited = rate * 2 = i128::MAX - 1  (fits in i128)
-    StellarAssetClient::new(&env, &token_address).mint(&sender, &i128::MAX);
-
-    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
-    c.create(
-        &sender,
-        &recipient,
-        &token_address,
-        &rate,
-        &START,
-        &(START + duration),
-        &false,
-    );
-
-    // top_up by exactly one rate-unit (1 second worth). After stop += 1 succeeds,
-    // math::add(i128::MAX - 1, rate) overflows i128::MAX.
-    assert_eq!(c.try_top_up(&rate), Err(Ok(Error::Overflow)));
 }
 
 // -------------------------------------------------------------- balance_of

@@ -8,6 +8,7 @@
 //! |---|---|
 //! | [`Error::AlreadyInitialized`] | `create` on an initialized instance |
 //! | [`Error::NotInitialized`] | any entry point before `create` |
+//! | [`Error::IdenticalParties`] | `create` with `grantor == beneficiary` |
 //! | [`Error::InvalidAmount`] | `create` with a non-positive total |
 //! | [`Error::InvalidDuration`] | `create` with a zero duration |
 //! | [`Error::Overflow`] | proportional vesting math exceeding `i128` |

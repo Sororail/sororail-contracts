@@ -65,7 +65,7 @@ impl Stream {
         if effective <= self.start {
             return Ok(0);
         }
-        let elapsed = (effective - self.start) as i128;
+        let elapsed = math::sub(effective as i128, self.start as i128)?;
         let accrued = math::mul(self.rate_per_second, elapsed)?;
         Ok(math::min(accrued, self.deposited))
     }

@@ -97,6 +97,23 @@ fails for an unauthorized caller.
 point that touches storage extends the TTL of what it touched, using the helpers
 in `sororail_common::storage`.
 
+
+## Contract Immutability and Migration
+
+Soroban contracts are immutable once deployed. This means that contract logic cannot be directly upgraded. Any changes to a contract (bug fixes, feature additions) require deploying a new contract instance.
+
+#### Migration Plan:
+
+When a new version of a SoroRail contract is deployed, existing contracts will continue to function under their original logic. Users or integrated applications will need to:
+
+1.  **Deploy New Instances:** New instances of the upgraded contracts must be deployed.
+2.  **Migrate Funds/State:** For contracts that hold funds or state (e.g., `escrow`, `stream`, `vesting`, `recurring`), a migration strategy is necessary. This typically involves:
+    *   **Draining Old Contracts:** Encouraging users to withdraw all funds or complete all operations on the old contract instance.
+    *   **New Interactions:** Directing new interactions and deployments to the new contract instances.
+    *   **Wrapper Contracts/SDK Updates:** Providing wrapper contracts or SDK updates to facilitate interaction with the new contract versions, potentially abstracting away the underlying contract address changes.
+
+Due to the immutable nature, careful planning and communication are essential for any contract upgrades to ensure a smooth transition for users.
+
 ## Testing requirements
 
 Non-negotiable — this is what makes the contracts credible as a dependency:
@@ -153,3 +170,8 @@ scoped so that someone new to Soroban can complete them.
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+
+## Updates
+
+Updated documentation for recent changes.

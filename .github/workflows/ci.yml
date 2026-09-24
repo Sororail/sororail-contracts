@@ -5,63 +5,140 @@ on:
     branches: [main]
   pull_request:
 
+# Lint policy (deny warnings, checked arithmetic) lives in [workspace.lints]
+# in Cargo.toml, not in RUSTFLAGS, so local `cargo clippy` matches CI.
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: jobs get the repo default scope unless overridden below.
+# Only the audit job gets more (checks: write for rustsec/audit-check).
+permissions:
+  contents: read
+
 jobs:
+  conventional-commits:
+    name: conventional commits
+    runs-on: ubuntu-latest
+    # PR title becomes the squash-merge commit, so that is what we validate.
+    # SPEC.md and CONTRIBUTING.md require Conventional Commits.
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   check:
     name: fmt / clippy / test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@nextest
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - uses: taiki-e/install-action@4765db214858792ed289a2b5e543daf93d682a48 # nextest
 
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets
       - run: cargo nextest run --workspace
+
+  doc:
+    name: cargo doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - run: cargo doc --no-deps --workspace
+        env:
+          RUSTDOCFLAGS: "-D warnings"
 
   build:
     name: wasm build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
         with:
           targets: wasm32v1-none
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       # sororail-integration-tests is host-only (needs std); it is excluded
       # here rather than being allowed to fail the wasm build.
       - run: cargo build --workspace --exclude sororail-integration-tests --target wasm32v1-none --release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: wasm
           path: target/wasm32v1-none/release/*.wasm
+      # Fail if any contract wasm exceeds the Soroban size budget (256 KiB).
+      - name: check wasm sizes
+        run: |
+          MAX_BYTES=$((256 * 1024))
+          fail=0
+          for f in target/wasm32v1-none/release/sororail_*.wasm; do
+            sz=$(stat -c%s "$f")
+            name=$(basename "$f")
+            echo "$name: $sz bytes"
+            if [ "$sz" -gt "$MAX_BYTES" ]; then
+              echo "::error file=$f::${name} is ${sz} bytes, exceeds ${MAX_BYTES} byte limit"
+              fail=1
+            fi
+          done
+          exit "$fail"
+      # Rust tests never load the contract spec, so a broken one (e.g. the
+      # `Payments` alias in DEPLOYMENTS.md) passes everything above. `make
+      # specs` generates each interface and fails if it does not parse or
+      # references an undefined type. Action tag == CLI version; keep in step
+      # with DEPLOYMENTS.md.
+      - uses: stellar/stellar-cli@8e402ea28202950b272fbabc34caad4d2f64fe87 # v27.1.0
+      - run: make specs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: specs
+          path: dist/specs/*.json
+
+  msrv:
+    name: msrv (1.91)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+        with:
+          # Must equal rust-version in Cargo.toml.
+          toolchain: "1.91"
+          targets: wasm32v1-none
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - run: cargo check --workspace --all-targets --locked
+      - run: cargo check --workspace --exclude sororail-integration-tests --target wasm32v1-none --locked
 
   coverage:
     name: coverage (>=90%)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: taiki-e/install-action@nextest
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+        with:
+          # Pinned to match rust-toolchain.toml so coverage numbers cannot
+          # drift when stable moves. Keep in sync by hand.
+          toolchain: 1.97.1
+      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - uses: taiki-e/install-action@ab4220e067fa624f7930084426dbfb7440a52829 # cargo-llvm-cov
+      - uses: taiki-e/install-action@4765db214858792ed289a2b5e543daf93d682a48 # nextest
       - run: cargo llvm-cov nextest --workspace --fail-under-lines 90
 
   audit:
     name: cargo audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

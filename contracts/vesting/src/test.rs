@@ -1,9 +1,13 @@
+// Test fixtures do plain arithmetic on known-small constants; the checked-math
+// rule is for contract code.
+#![allow(clippy::arithmetic_side_effects)]
+
 use soroban_sdk::{
-    testutils::{Address as _, Events as _, Ledger as _},
-    token::{StellarAssetClient, TokenClient},
-    Address, Env, Event,
+    testutils::{Address as _, Ledger as _},
+    token::TokenClient,
+    Address, Env,
 };
-use sororail_common::Error;
+use sororail_common::{testutils::TestEnv, Error};
 
 use crate::{
     contract::{VestingContract, VestingContractClient},
@@ -31,15 +35,11 @@ impl Fixture<'_> {
     }
 
     fn with_schedule(revocable: bool, cliff: u64, duration: u64) -> Self {
-        let env = Env::default();
-        env.mock_all_auths();
-        env.ledger().with_mut(|l| l.timestamp = START);
-
-        let grantor = Address::generate(&env);
-        let beneficiary = Address::generate(&env);
-        let issuer = Address::generate(&env);
-        let token_address = env.register_stellar_asset_contract_v2(issuer).address();
-        StellarAssetClient::new(&env, &token_address).mint(&grantor, &MINT);
+        let te = TestEnv::at(START);
+        let (token, grantor) = te.make_token(MINT);
+        let token_address = token.address.clone();
+        let beneficiary = te.make_address();
+        let env = te.env;
 
         let client = VestingContractClient::new(&env, &env.register(VestingContract, ()));
         client.create(
@@ -182,6 +182,21 @@ fn vesting_reports_overflow_rather_than_wrapping() {
     assert_eq!(g.vested_amount(START + 500), Err(Error::Overflow));
 }
 
+#[test]
+fn long_duration_large_total_stays_inside_documented_safe_range() {
+    let env = Env::default();
+    let ten_years = 10 * 365 * 24 * 60 * 60;
+    let mut g = bare(&env, 0, ten_years);
+
+    // One billion 18-decimal tokens over ten years stays well below i128::MAX
+    // during the checked `total * elapsed / duration` calculation.
+    g.total = 1_000_000_000_i128 * 1_000_000_000_000_000_000_i128;
+
+    assert_eq!(g.vested_amount(START + ten_years / 2), Ok(g.total / 2));
+    assert!(g.vested_amount(START + ten_years - 1).is_ok());
+    assert_eq!(g.vested_amount(START + ten_years), Ok(g.total));
+}
+
 // ------------------------------------------------------------------ create
 
 #[test]
@@ -271,6 +286,77 @@ fn create_rejects_a_second_call() {
 }
 
 #[test]
+fn create_rejects_identical_grantor_and_beneficiary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = VestingContractClient::new(&env, &env.register(VestingContract, ()));
+    let party = Address::generate(&env);
+    let token = Address::generate(&env);
+    assert_eq!(
+        c.try_create(&party, &party, &token, &TOTAL, &START, &CLIFF, &DURATION, &true),
+        Err(Ok(Error::IdenticalParties))
+    );
+}
+
+/// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
+/// expected value is spelled out literally rather than built from
+/// `events::Created`, so renaming a topic or a field fails here.
+#[test]
+fn create_emits_the_created_event() {
+    let te = TestEnv::at(START);
+    let (token_client, grantor) = te.make_token(MINT);
+    let token_address = token_client.address.clone();
+    let beneficiary = te.make_address();
+    let env = te.env;
+
+    let client = VestingContractClient::new(&env, &env.register(VestingContract, ()));
+    client.create(
+        &grantor,
+        &beneficiary,
+        &token_address,
+        &TOTAL,
+        &START,
+        &CLIFF,
+        &DURATION,
+        &true,
+    );
+
+    let total: Val = TOTAL.into_val(&env);
+    let start: Val = START.into_val(&env);
+    let cliff: Val = CLIFF.into_val(&env);
+    let duration: Val = DURATION.into_val(&env);
+    let revocable: Val = true.into_val(&env);
+    // Map data: keys are the field names, serialized in sorted order.
+    let data: Val = map![
+        env,
+        (Symbol::new(&env, "beneficiary"), beneficiary.into_val(&env)),
+        (Symbol::new(&env, "cliff"), cliff),
+        (Symbol::new(&env, "duration"), duration),
+        (Symbol::new(&env, "revocable"), revocable),
+        (Symbol::new(&env, "start"), start),
+        (Symbol::new(&env, "token"), token_address.into_val(&env)),
+        (Symbol::new(&env, "total"), total),
+    ]
+    .into_val(&env);
+    assert_eq!(
+        env.events().all().filter_by_contract(&client.address),
+        vec![
+            env,
+            (
+                client.address.clone(),
+                vec![
+                    env,
+                    Symbol::new(&env, "vesting").into_val(&env),
+                    Symbol::new(&env, "created").into_val(&env),
+                    grantor.into_val(&env),
+                ],
+                data,
+            ),
+        ]
+    );
+}
+
+#[test]
 fn entry_points_error_before_create() {
     let env = Env::default();
     env.mock_all_auths();
@@ -307,6 +393,27 @@ fn claim_is_blocked_before_the_cliff() {
     f.at(START + CLIFF - 1);
     assert_eq!(f.client.try_claim(), Err(Ok(Error::VestingCliffNotReached)));
     assert_eq!(f.held(), TOTAL);
+}
+
+#[test]
+fn claim_exactly_at_and_one_second_before_cliff() {
+    let env = Env::default();
+    let g = bare(&env, CLIFF, DURATION);
+    // One second before cliff_at(): nothing vested yet.
+    assert_eq!(g.claimable_at(START + CLIFF - 1), Ok(0));
+    // Exactly at cliff_at(): cliff vests its proportion in one step.
+    assert_eq!(g.claimable_at(START + CLIFF), Ok(TOTAL / 10));
+}
+
+#[test]
+fn claim_fails_one_second_before_cliff_but_succeeds_at_cliff() {
+    let f = Fixture::new(true);
+    f.at(START + CLIFF - 1);
+    assert_eq!(f.client.try_claim(), Err(Ok(Error::VestingCliffNotReached)));
+    f.at(START + CLIFF);
+    assert_eq!(f.client.claim(), TOTAL / 10);
+    assert_eq!(f.token.balance(&f.beneficiary), TOTAL / 10);
+    f.assert_conserved();
 }
 
 #[test]
@@ -409,6 +516,20 @@ fn revoke_before_the_cliff_returns_everything() {
     assert_eq!(f.token.balance(&f.grantor), grantor_before + TOTAL);
     assert_eq!(f.held(), 0);
     // Nothing ever vested, so there is nothing to claim.
+    assert_eq!(f.client.try_claim(), Err(Ok(Error::VestingCliffNotReached)));
+    f.assert_conserved();
+}
+
+#[test]
+fn revoke_before_the_cliff_then_advance_time_and_claim() {
+    let f = Fixture::new(true);
+    // Revoke before the cliff.
+    f.client.revoke();
+    // Advance time past the cliff -- but revoked_at freezes effective time.
+    f.at(START + CLIFF + 1_000);
+    // After revocation before the cliff, claim still reports CliffNotReached
+    // because effective time is frozen at revoked_at (before the cliff).
+    // Nothing was ever vested, so nothing is claimable.
     assert_eq!(f.client.try_claim(), Err(Ok(Error::VestingCliffNotReached)));
     f.assert_conserved();
 }
