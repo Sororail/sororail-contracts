@@ -8,6 +8,9 @@ repository.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
 
+[lib]
+doctest = true
+
 [features]
 # Exposes `sororail_common::testutils` — lightweight test-environment helpers
 # (token minting, address generation, ledger time control). Depend on this

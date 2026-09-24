@@ -181,6 +181,21 @@ fn vesting_reports_overflow_rather_than_wrapping() {
     assert_eq!(g.vested_amount(START + 500), Err(Error::Overflow));
 }
 
+#[test]
+fn long_duration_large_total_stays_inside_documented_safe_range() {
+    let env = Env::default();
+    let ten_years = 10 * 365 * 24 * 60 * 60;
+    let mut g = bare(&env, 0, ten_years);
+
+    // One billion 18-decimal tokens over ten years stays well below i128::MAX
+    // during the checked `total * elapsed / duration` calculation.
+    g.total = 1_000_000_000_i128 * 1_000_000_000_000_000_000_i128;
+
+    assert_eq!(g.vested_amount(START + ten_years / 2), Ok(g.total / 2));
+    assert!(g.vested_amount(START + ten_years - 1).is_ok());
+    assert_eq!(g.vested_amount(START + ten_years), Ok(g.total));
+}
+
 // ------------------------------------------------------------------ create
 
 #[test]

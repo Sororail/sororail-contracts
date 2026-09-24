@@ -14,7 +14,7 @@ build:
 
 # Tests run on the host, not on wasm -- soroban_sdk::testutils needs std.
 test:
-	cargo test --workspace
+	cargo nextest run --workspace
 
 fmt:
 	cargo fmt --all
