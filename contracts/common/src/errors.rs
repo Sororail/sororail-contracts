@@ -71,6 +71,8 @@ pub enum Error {
     EscrowNotDisputed = 24,
     /// `dispute` called on an escrow that is already disputed.
     EscrowAlreadyDisputed = 25,
+    /// `cancel` called on an escrow that is not in `Created`.
+    EscrowNotCancellable = 26,
 
     // ----- stream: 40–59 -----
     /// No stream exists for the given id.

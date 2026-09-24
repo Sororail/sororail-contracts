@@ -58,6 +58,26 @@ impl EscrowContract {
         Ok(())
     }
 
+    /// Cancels a Created escrow, returning control of the instance to the
+    /// deployer. Only the depositor may do this, and only before funding.
+    ///
+    /// This provides an exit from a mistaken `init` without burning the
+    /// deployed instance.
+    pub fn cancel(env: Env) -> Result<(), Error> {
+        let mut escrow = storage::load(&env)?;
+        auth::require(escrow.state == State::Created, Error::EscrowNotCancellable)?;
+        escrow.depositor.require_auth();
+
+        escrow.state = State::Refunded;
+        storage::save(&env, &escrow);
+
+        events::Cancelled {
+            depositor: escrow.depositor.clone(),
+        }
+        .publish(&env);
+        Ok(())
+    }
+
     /// Pulls the agreed amount from the depositor into the contract.
     pub fn fund(env: Env) -> Result<(), Error> {
         let mut escrow = storage::load(&env)?;
@@ -65,6 +85,9 @@ impl EscrowContract {
             return Err(Error::EscrowClosed);
         }
         auth::require(escrow.state == State::Created, Error::EscrowNotFundable)?;
+        if env.ledger().timestamp() >= escrow.deadline {
+            return Err(Error::DeadlinePassed);
+        }
         escrow.depositor.require_auth();
 
         escrow.state = State::Funded;

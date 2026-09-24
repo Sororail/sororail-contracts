@@ -401,6 +401,45 @@ fn charge_requires_the_payees_authorization() {
     f.client.charge();
 }
 
+/// When the payer's token allowance to this contract is insufficient,
+/// `charge` must fail cleanly — reverting the `periods_charged` /
+/// `next_chargeable_at` state that was persisted just before the
+/// `transfer_from` call (#100).
+#[test]
+fn charge_reverts_schedule_state_when_allowance_is_insufficient() {
+    let f = Fixture::new(None);
+    let expiry = f.env.ledger().sequence() + 100_000;
+    // Set allowance to less than one period's worth.
+    f.token
+        .approve(&f.payer, &f.client.address, &(AMOUNT - 1), &expiry);
+
+    f.at(START + PERIOD);
+    assert!(f.client.try_charge().is_err());
+    // Schedule state must be unchanged — the failed transfer_from rolled
+    // back the optimistic write.
+    assert_eq!(f.client.get().periods_charged, 0);
+    assert_eq!(f.client.next_chargeable_at(), START + PERIOD);
+    assert_eq!(f.token.balance(&f.payee), 0);
+}
+
+/// When the payer's token allowance has expired (TTL reached 0), `charge`
+/// must fail and leave the schedule state untouched (#100).
+#[test]
+fn charge_reverts_schedule_state_when_allowance_is_expired() {
+    let f = Fixture::new(None);
+    // Grant an allowance that expires immediately.
+    let current_seq = f.env.ledger().sequence();
+    f.token
+        .approve(&f.payer, &f.client.address, &MINT, &(current_seq + 1));
+    // Advance the ledger past the allowance expiry.
+    f.env.ledger().with_mut(|l| l.sequence = current_seq + 100_000);
+
+    f.at(START + PERIOD);
+    assert!(f.client.try_charge().is_err());
+    assert_eq!(f.client.get().periods_charged, 0);
+    assert_eq!(f.token.balance(&f.payee), 0);
+}
+
 // ------------------------------------------------------------------ cancel
 
 #[test]

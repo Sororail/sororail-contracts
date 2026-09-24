@@ -7,7 +7,7 @@ use sororail_common::Error;
 
 use crate::{
     contract::{EscrowContract, EscrowContractClient},
-    events::{Created, Disputed, Funded, Refunded, Released, Resolved},
+    events::{Cancelled, Created, Disputed, Funded, Refunded, Released, Resolved},
     types::State,
 };
 
@@ -164,6 +164,7 @@ fn entry_points_error_before_init() {
     let who = Address::generate(&env);
 
     assert_eq!(client.try_fund(), Err(Ok(Error::NotInitialized)));
+    assert_eq!(client.try_cancel(), Err(Ok(Error::NotInitialized)));
     assert_eq!(client.try_release(&who), Err(Ok(Error::NotInitialized)));
     assert_eq!(client.try_refund(&who), Err(Ok(Error::NotInitialized)));
     assert_eq!(client.try_dispute(&who), Err(Ok(Error::NotInitialized)));
@@ -222,6 +223,61 @@ fn init_emits_created_event_with_correct_topics_and_data() {
         deadline: DEADLINE,
     };
     assert_eq!(created_event, &expected);
+}
+
+// --------------------------------------------------------------- cancel
+
+#[test]
+fn cancel_transitions_created_to_refunded() {
+    let f = Fixture::new(true);
+    f.client.cancel();
+    assert_eq!(f.client.state(), State::Refunded);
+}
+
+#[test]
+fn cancel_is_callable_only_by_the_depositor() {
+    let f = Fixture::new(true);
+    assert_eq!(
+        f.client.try_cancel(&f.beneficiary),
+        Err(Ok(Error::Unauthorized))
+    );
+    assert_eq!(
+        f.client.try_cancel(&f.outsider),
+        Err(Ok(Error::Unauthorized))
+    );
+}
+
+#[test]
+fn cancel_rejects_a_funded_escrow() {
+    let f = Fixture::funded(true);
+    assert_eq!(
+        f.client.try_cancel(&f.depositor),
+        Err(Ok(Error::EscrowNotCancellable))
+    );
+}
+
+#[test]
+fn cancel_emits_cancelled_event() {
+    let f = Fixture::new(true);
+    f.client.cancel();
+
+    let events = f.env.events().all();
+    // Created + Cancelled
+    assert_eq!(events.len(), 2);
+    let expected = Cancelled {
+        depositor: f.depositor.clone(),
+    };
+    assert_eq!(&events[1], &expected);
+}
+
+#[test]
+fn cancel_does_not_move_any_tokens() {
+    let f = Fixture::new(true);
+    let depositor_before = f.token.balance(&f.depositor);
+    f.client.cancel();
+
+    assert_eq!(f.token.balance(&f.depositor), depositor_before);
+    assert_eq!(f.escrow_balance(), 0);
 }
 
 // ------------------------------------------------------------------ fund
@@ -283,6 +339,26 @@ fn fund_rejects_a_closed_escrow() {
     let f = Fixture::funded(true);
     f.client.release(&f.depositor);
     assert_eq!(f.client.try_fund(), Err(Ok(Error::EscrowClosed)));
+}
+
+/// `fund` must reject when the deadline has already passed, even if the
+/// escrow is still in `Created` state (#102).
+#[test]
+fn fund_rejects_after_the_deadline() {
+    let f = Fixture::new(true);
+    f.advance_past_deadline();
+    assert_eq!(f.client.try_fund(), Err(Ok(Error::DeadlinePassed)));
+    assert_eq!(f.escrow_balance(), 0);
+    assert_eq!(f.client.state(), State::Created);
+}
+
+/// `fund` must reject at exactly the deadline timestamp (#102).
+#[test]
+fn fund_rejects_at_exactly_the_deadline() {
+    let f = Fixture::new(true);
+    f.env.ledger().with_mut(|l| l.timestamp = DEADLINE);
+    assert_eq!(f.client.try_fund(), Err(Ok(Error::DeadlinePassed)));
+    assert_eq!(f.client.state(), State::Created);
 }
 
 #[test]
