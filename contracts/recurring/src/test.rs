@@ -11,7 +11,7 @@ use sororail_common::Error;
 
 use crate::{
     contract::{RecurringContract, RecurringContractClient},
-    events::Authorized,
+    events::{Authorized, Cancelled, Charged},
 };
 
 const AMOUNT: i128 = 10_000;
@@ -236,6 +236,29 @@ fn charge_moves_funds_from_payer_to_payee() {
     assert_eq!(f.token.balance(&f.client.address), 0);
 }
 
+/// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
+/// expected value is spelled out via `events::Charged`, so renaming a topic
+/// or a field fails here.
+#[test]
+fn charge_emits_the_charged_event() {
+    let f = Fixture::new(None);
+    f.at(START + PERIOD);
+    f.client.charge();
+
+    let expected = Charged {
+        payee: f.payee.clone(),
+        payer: f.payer.clone(),
+        amount: AMOUNT,
+        periods_charged: 1,
+        next_chargeable_at: START + PERIOD * 2,
+    };
+    // The contract emits `authorized` at setup and `charged` here -- take the last one.
+    let all = f.env.events().all().filter_by_contract(&f.client.address);
+    let events = all.events();
+    let last = events.last().expect("no events emitted");
+    assert_eq!(last, &expected.to_xdr(&f.env, &f.client.address));
+}
+
 #[test]
 fn charge_cannot_be_taken_twice_in_one_period() {
     let f = Fixture::new(None);
@@ -373,6 +396,29 @@ fn the_payer_can_cancel() {
     f.at(START + PERIOD);
     assert_eq!(f.client.try_charge(), Err(Ok(Error::RecurringCancelled)));
     assert_eq!(f.token.balance(&f.payee), 0);
+}
+
+/// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
+/// expected value is spelled out via `events::Cancelled`, so renaming a
+/// topic or a field fails here.
+#[test]
+fn cancel_emits_the_cancelled_event() {
+    let f = Fixture::new(None);
+    f.at(START + PERIOD);
+    f.client.charge();
+    f.at(START + PERIOD + 500);
+    f.client.cancel(&f.payer);
+
+    let expected = Cancelled {
+        cancelled_by: f.payer.clone(),
+        periods_charged: 1,
+        cancelled_at: START + PERIOD + 500,
+    };
+    // The contract also emits `authorized` and `charged` earlier -- take the last event.
+    let all = f.env.events().all().filter_by_contract(&f.client.address);
+    let events = all.events();
+    let last = events.last().expect("no events emitted");
+    assert_eq!(last, &expected.to_xdr(&f.env, &f.client.address));
 }
 
 #[test]

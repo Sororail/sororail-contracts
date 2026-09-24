@@ -11,7 +11,7 @@ use sororail_common::{testutils::TestEnv, Error};
 
 use crate::{
     contract::{VestingContract, VestingContractClient},
-    events::Revoked,
+    events::{Claimed, Revoked},
     types::Grant,
 };
 
@@ -423,6 +423,28 @@ fn claim_pays_the_vested_portion() {
     assert_eq!(f.client.claim(), TOTAL / 2);
     assert_eq!(f.token.balance(&f.beneficiary), TOTAL / 2);
     f.assert_conserved();
+}
+
+/// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
+/// expected value is spelled out via `events::Claimed`, so renaming a topic
+/// or a field fails here.
+#[test]
+fn claim_emits_the_claimed_event() {
+    let f = Fixture::new(true);
+    f.at(START + 500);
+    f.client.claim();
+
+    let expected = Claimed {
+        beneficiary: f.beneficiary.clone(),
+        amount: TOTAL / 2,
+        total_claimed: TOTAL / 2,
+    };
+    // filter_by_contract returns ContractEvents; .events() gives &[ContractEvent].
+    // The contract emits `created` at setup and `claimed` here -- take the last one.
+    let all = f.env.events().all().filter_by_contract(&f.client.address);
+    let events = all.events();
+    let last = events.last().expect("no events emitted");
+    assert_eq!(last, &expected.to_xdr(&f.env, &f.client.address));
 }
 
 #[test]
