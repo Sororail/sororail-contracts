@@ -376,6 +376,22 @@ fn charge_fails_when_allowance_covers_fewer_periods_than_remain() {
     assert_eq!(f.client.get().periods_charged, 2);
 }
 
+
+/// `charge` bumps `periods_charged` before `transfer_from`. A failed token
+/// call must roll that write back — `get()` still shows the pre-charge count.
+#[test]
+fn charge_reverts_cleanly_when_transfer_from_fails() {
+    let f = Fixture::new(None);
+    // Drain the payer so transfer_from fails even with a live allowance.
+    let payer_bal = f.token.balance(&f.payer);
+    f.token.transfer(&f.payer, &f.outsider, &payer_bal);
+
+    f.at(START + PERIOD);
+    assert!(f.client.try_charge().is_err());
+    assert_eq!(f.client.get().periods_charged, 0);
+    assert_eq!(f.token.balance(&f.payee), 0);
+}
+
 #[test]
 #[should_panic]
 fn charge_requires_the_payees_authorization() {

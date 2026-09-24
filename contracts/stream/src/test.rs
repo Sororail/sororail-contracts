@@ -339,6 +339,27 @@ fn create_rejects_identical_sender_and_recipient() {
         Err(Ok(Error::IdenticalParties))
     );
 }
+
+/// `create` saves the stream before pulling funds. If the token transfer
+/// fails, the host reverts the whole invocation — including that save — so a
+/// later `get` still sees `NotInitialized`.
+#[test]
+fn create_reverts_cleanly_when_sender_cannot_fund() {
+    let te = TestEnv::at(START);
+    // Mint far less than the deposit the span requires.
+    let (token_client, sender) = te.make_token(RATE);
+    let token = token_client.address.clone();
+    let recipient = te.make_address();
+    let env = te.env;
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+
+    assert!(c
+        .try_create(&sender, &recipient, &token, &RATE, &START, &STOP, &true)
+        .is_err());
+    assert_eq!(c.try_get(), Err(Ok(Error::NotInitialized)));
+    assert_eq!(token_client.balance(&c.address), 0);
+    assert_eq!(token_client.balance(&sender), RATE);
+}
 #[test]
 fn entry_points_error_before_create() {
     let env = Env::default();
