@@ -7,7 +7,7 @@ use sororail_common::Error;
 
 use crate::{
     contract::{EscrowContract, EscrowContractClient},
-    events::{Created, Disputed, Funded, Resolved},
+    events::{Created, Disputed, Funded, Refunded, Released, Resolved},
     types::State,
 };
 
@@ -279,6 +279,22 @@ fn release_pays_the_beneficiary() {
 }
 
 #[test]
+fn release_emits_released_event_with_correct_topics_and_data() {
+    let f = Fixture::funded(true);
+    f.client.release(&f.depositor);
+
+    let events = f.env.events().all();
+    // Created + Funded + Released
+    assert_eq!(events.len(), 3);
+    let expected = Released {
+        beneficiary: f.beneficiary.clone(),
+        amount: AMOUNT,
+        released_by: f.depositor.clone(),
+    };
+    assert_eq!(&events[2], &expected);
+}
+
+#[test]
 fn release_is_callable_by_the_arbiter() {
     let f = Fixture::funded(true);
     f.client.release(&f.arbiter);
@@ -346,6 +362,23 @@ fn refund_by_depositor_succeeds_after_the_deadline() {
     assert_eq!(f.token.balance(&f.depositor), before + AMOUNT);
     assert_eq!(f.escrow_balance(), 0);
     assert_eq!(f.client.state(), State::Refunded);
+}
+
+#[test]
+fn refund_emits_refunded_event_with_correct_topics_and_data() {
+    let f = Fixture::funded(true);
+    f.advance_past_deadline();
+    f.client.refund(&f.depositor);
+
+    let events = f.env.events().all();
+    // Created + Funded + Refunded
+    assert_eq!(events.len(), 3);
+    let expected = Refunded {
+        depositor: f.depositor.clone(),
+        amount: AMOUNT,
+        refunded_by: f.depositor.clone(),
+    };
+    assert_eq!(&events[2], &expected);
 }
 
 #[test]

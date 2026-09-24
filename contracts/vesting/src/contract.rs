@@ -19,6 +19,16 @@ impl VestingContract {
     /// never partially funded.
     ///
     /// `grantor` and `beneficiary` must differ; a self-grant is rejected.
+    ///
+    /// # Why positional arguments (not a `CreateGrantParams` struct)
+    ///
+    /// Soroban does support a single `#[contracttype]` struct parameter, and
+    /// that would silence this lint. Positional arguments were kept anyway so
+    /// the on-chain ABI stays a flat argument list — the same shape the
+    /// TypeScript SDK's uniform build → simulate → sign → send → confirm
+    /// surface (SPEC.md) will bind without introducing a nested params object
+    /// per entry point. Same decision as `stream::create`; revisit only if the
+    /// SDK deliberately adopts struct params across every contract.
     #[allow(clippy::too_many_arguments)]
     pub fn create(
         env: Env,

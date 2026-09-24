@@ -12,6 +12,7 @@ use sororail_common::{testutils::TestEnv, Error};
 
 use crate::{
     contract::{StreamContract, StreamContractClient},
+    events::{Cancelled, Created, Withdrawn},
     types::Stream,
 };
 
@@ -162,6 +163,27 @@ fn accrual_reports_overflow_rather_than_wrapping() {
     assert_eq!(s.accrued_at(START + 2), Err(Error::Overflow));
 }
 
+/// Documents that `available_at` degrades to `Err(Underflow)` if `withdrawn`
+/// ever exceeds accrued (e.g. a future code path bug). Today's `withdraw`
+/// rejects `requested > available`, so this state is unreachable through the
+/// contract entry points; the pure helper must still not wrap to a negative
+/// `i128` if it is reached.
+#[test]
+fn available_at_errors_if_withdrawn_exceeds_accrued() {
+    let env = Env::default();
+    let mut s = bare(&env);
+    // Accrued at START+10 is RATE*10; force withdrawn past that.
+    s.withdrawn = RATE * 10 + 1;
+    assert_eq!(
+        s.available_at(START + 10),
+        Err(Error::Underflow),
+        "available_at must error rather than wrap when withdrawn > accrued"
+    );
+    // Even after full accrual, an over-withdrawn book still errors.
+    s.withdrawn = DEPOSITED + 1;
+    assert_eq!(s.available_at(STOP), Err(Error::Underflow));
+}
+
 // ------------------------------------------------------------------ create
 
 #[test]
@@ -175,6 +197,25 @@ fn create_funds_the_whole_span_up_front() {
     assert_eq!(s.refunded, 0);
     assert_eq!(s.cancelled_at, None);
     f.assert_conserved();
+}
+
+/// Pins Created topics and data fields (SPEC.md `indexed_events`).
+#[test]
+fn create_emits_the_created_event() {
+    let f = Fixture::new(true);
+    let events = f.env.events().all();
+    assert_eq!(events.len(), 1);
+    let expected = Created {
+        sender: f.sender.clone(),
+        recipient: f.recipient.clone(),
+        token: f.token.address.clone(),
+        rate_per_second: RATE,
+        start: START,
+        stop: STOP,
+        cancellable: true,
+        deposited: DEPOSITED,
+    };
+    assert_eq!(&events[0], &expected);
 }
 
 #[test]
@@ -341,6 +382,23 @@ fn withdraw_none_takes_everything_available() {
 }
 
 #[test]
+fn withdraw_emits_the_withdrawn_event() {
+    let f = Fixture::new(true);
+    f.at(START + 300);
+    f.client.withdraw(&None);
+
+    let events = f.env.events().all();
+    // Created + Withdrawn
+    assert_eq!(events.len(), 2);
+    let expected = Withdrawn {
+        recipient: f.recipient.clone(),
+        amount: RATE * 300,
+        total_withdrawn: RATE * 300,
+    };
+    assert_eq!(&events[1], &expected);
+}
+
+#[test]
 fn withdraw_takes_a_partial_amount() {
     let f = Fixture::new(true);
     f.at(START + 300);
@@ -443,6 +501,24 @@ fn cancel_settles_the_recipient_and_refunds_the_sender() {
     assert_eq!(f.held(), 0);
     assert_eq!(f.client.remaining(), 0);
     f.assert_conserved();
+}
+
+#[test]
+fn cancel_emits_the_cancelled_event() {
+    let f = Fixture::new(true);
+    f.at(START + 400);
+    f.client.cancel();
+
+    let events = f.env.events().all();
+    // Created + Cancelled
+    assert_eq!(events.len(), 2);
+    let expected = Cancelled {
+        sender: f.sender.clone(),
+        settled_to_recipient: RATE * 400,
+        refunded_to_sender: DEPOSITED - RATE * 400,
+        cancelled_at: START + 400,
+    };
+    assert_eq!(&events[1], &expected);
 }
 
 #[test]
