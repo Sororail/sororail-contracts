@@ -42,11 +42,27 @@ pub fn div(a: i128, b: i128) -> Result<i128, Error> {
 /// rather than widening. Callers doing proportional math over very large
 /// totals (`total * elapsed / duration`) should be aware that an overflow is
 /// reported as [`Error::Overflow`], not silently truncated.
+///
+/// # Examples
+///
+/// ```
+/// use sororail_common::math;
+///
+/// assert_eq!(math::mul_div(1_000, 25, 100), Ok(250));
+/// ```
 pub fn mul_div(a: i128, b: i128, d: i128) -> Result<i128, Error> {
     div(mul(a, b)?, d)
 }
 
 /// `amount * bps / 10000`, rounded toward zero.
+///
+/// # Examples
+///
+/// ```
+/// use sororail_common::math;
+///
+/// assert_eq!(math::mul_bps(1_000_000, 250), Ok(25_000));
+/// ```
 pub fn mul_bps(amount: i128, bps: u32) -> Result<i128, Error> {
     if bps > MAX_BPS {
         return Err(Error::InvalidBasisPoints);
@@ -59,6 +75,16 @@ pub fn mul_bps(amount: i128, bps: u32) -> Result<i128, Error> {
 /// `second` is computed as the remainder rather than as `10000 - bps`, so the
 /// two parts always sum to exactly `amount` with no rounding leakage. This is
 /// the property escrow dispute resolution depends on.
+///
+/// # Examples
+///
+/// ```
+/// use sororail_common::math;
+///
+/// let (fee, remainder) = math::split_bps(101, 3_333)?;
+/// assert_eq!(fee + remainder, 101);
+/// # Ok::<(), sororail_common::Error>(())
+/// ```
 pub fn split_bps(amount: i128, bps: u32) -> Result<(i128, i128), Error> {
     let first = mul_bps(amount, bps)?;
     let second = sub(amount, first)?;
