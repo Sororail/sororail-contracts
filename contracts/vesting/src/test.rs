@@ -398,6 +398,63 @@ fn create_rejects_identical_grantor_and_beneficiary() {
 /// `create` persists the grant before the token pull. A failed transfer must
 /// roll back that write so `get` still returns `NotInitialized`.
 #[test]
+fn create_with_contract_as_beneficiary_succeeds() {
+    let te = TestEnv::at(START);
+    let (token_client, grantor) = te.make_token(MINT);
+    let token = token_client.address.clone();
+    let env = te.env;
+    let contract_id = env.register(VestingContract, ());
+    let client = VestingContractClient::new(&env, &contract_id);
+
+    let result = client.try_create(
+        &grantor,
+        &contract_id,
+        &token,
+        &TOTAL,
+        &START,
+        &CLIFF,
+        &DURATION,
+        &true,
+    );
+    assert!(result.is_ok(), "create with contract as beneficiary should succeed");
+}
+
+#[test]
+fn create_rejects_multiple_invalid_args_in_order() {
+    let te = TestEnv::at(START);
+    let (token_client, grantor) = te.make_token(MINT);
+    let token = token_client.address.clone();
+    let beneficiary = te.make_address();
+    let env = te.env;
+
+    let contract_id = env.register(VestingContract, ());
+    let client = VestingContractClient::new(&env, &contract_id);
+
+    // AlreadyInitialized comes before InvalidAmount
+    client.create(&grantor, &beneficiary, &token, &TOTAL, &START, &CLIFF, &DURATION, &true);
+    assert_eq!(
+        client.try_create(&grantor, &beneficiary, &token, &0, &START, &CLIFF, &DURATION, &true),
+        Err(Ok(Error::AlreadyInitialized))
+    );
+
+    // InvalidAmount comes before InvalidDuration
+    let contract_id2 = env.register(VestingContract, ());
+    let client2 = VestingContractClient::new(&env, &contract_id2);
+    assert_eq!(
+        client2.try_create(&grantor, &beneficiary, &token, &0, &START, &CLIFF, &0, &true),
+        Err(Ok(Error::InvalidAmount))
+    );
+
+    // InvalidDuration comes before VestingCliffAfterEnd
+    let contract_id3 = env.register(VestingContract, ());
+    let client3 = VestingContractClient::new(&env, &contract_id3);
+    assert_eq!(
+        client3.try_create(&grantor, &beneficiary, &token, &TOTAL, &START, &CLIFF, &0, &true),
+        Err(Ok(Error::InvalidDuration))
+    );
+}
+
+#[test]
 fn create_reverts_cleanly_when_grantor_cannot_fund() {
     let te = TestEnv::at(START);
     let (token_client, grantor) = te.make_token(1);

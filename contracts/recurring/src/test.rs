@@ -164,6 +164,57 @@ fn entry_points_error_before_authorize() {
 }
 
 #[test]
+fn authorize_rejects_multiple_invalid_args_in_order() {
+    let f = Fixture::new(None);
+
+    // InvalidAmount comes before InvalidDuration
+    let env = f.client.client.env.clone();
+    let contract_id = env.register(RecurringContract, ());
+    let client = RecurringContractClient::new(&env, &contract_id);
+    assert_eq!(
+        client.try_authorize(
+            &f.payer,
+            &f.payee,
+            &f.token.address,
+            &0,
+            &0,
+            &None
+        ),
+        Err(Ok(Error::InvalidAmount))
+    );
+
+    // InvalidDuration comes before InvalidBasisPoints
+    let contract_id2 = env.register(RecurringContract, ());
+    let client2 = RecurringContractClient::new(&env, &contract_id2);
+    assert_eq!(
+        client2.try_authorize(
+            &f.payer,
+            &f.payee,
+            &f.token.address,
+            &AMOUNT,
+            &0,
+            &Some(20_000)
+        ),
+        Err(Ok(Error::InvalidDuration))
+    );
+
+    // Validation completes before AlreadyInitialized check
+    // AlreadyInitialized comes before amount validation on second call
+    f.client.authorize(
+        &f.payer,
+        &f.payee,
+        &f.token.address,
+        &AMOUNT,
+        &PERIOD,
+        &None,
+    );
+    assert_eq!(
+        f.client.try_authorize(&f.payer, &f.payee, &f.token.address, &0, &PERIOD, &None),
+        Err(Ok(Error::AlreadyInitialized))
+    );
+}
+
+#[test]
 #[should_panic]
 fn authorize_requires_the_payers_authorization() {
     let env = Env::default();

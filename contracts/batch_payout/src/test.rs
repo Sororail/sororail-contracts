@@ -260,6 +260,65 @@ fn execute_requires_the_funders_authorization() {
     client.execute(&funder, &token, &batch);
 }
 
+#[test]
+fn execute_rejects_payment_to_contract_address() {
+    let f = Fixture::new();
+    let contract = f.client.address;
+    let batch = vec![
+        &f.env,
+        Payment {
+            to: contract,
+            amount: 100,
+        },
+    ];
+    assert_eq!(
+        f.client.try_execute(&f.funder, &f.token.address, &batch),
+        Err(Ok(Error::IdenticalParties))
+    );
+}
+
+#[test]
+fn preview_rejects_payment_to_contract_address() {
+    let f = Fixture::new();
+    let contract = f.client.address;
+    let batch = vec![
+        &f.env,
+        Payment {
+            to: contract,
+            amount: 100,
+        },
+    ];
+    assert_eq!(
+        f.client.try_preview(&batch),
+        Err(Ok(Error::IdenticalParties))
+    );
+}
+
+#[test]
+fn execute_rejects_multiple_invalid_args_in_order() {
+    let f = Fixture::new();
+    let contract = f.client.address;
+    // Both empty batch AND self-payment: size check comes first
+    let empty_batch: Vec<Payment> = Vec::new(&f.env);
+    assert_eq!(
+        f.client.try_execute(&f.funder, &f.token.address, &empty_batch),
+        Err(Ok(Error::BatchEmpty))
+    );
+
+    // Self-payment AND zero amount: self-payment check comes first
+    let batch = vec![
+        &f.env,
+        Payment {
+            to: contract,
+            amount: 0,
+        },
+    ];
+    assert_eq!(
+        f.client.try_execute(&f.funder, &f.token.address, &batch),
+        Err(Ok(Error::IdenticalParties))
+    );
+}
+
 // ----------------------------------------------------------- execute_equal
 
 #[test]
@@ -316,6 +375,47 @@ fn execute_equal_rejects_a_batch_over_the_cap() {
         f.client
             .try_execute_equal(&f.funder, &f.token.address, &recipients, &1),
         Err(Ok(Error::BatchTooLarge))
+    );
+}
+
+#[test]
+fn execute_equal_rejects_contract_address_in_recipients() {
+    let f = Fixture::new();
+    let contract = f.client.address;
+    let mut recipients = f.addresses(2);
+    recipients.push_back(contract);
+    assert_eq!(
+        f.client
+            .try_execute_equal(&f.funder, &f.token.address, &recipients, &100),
+        Err(Ok(Error::IdenticalParties))
+    );
+}
+
+#[test]
+fn execute_equal_rejects_multiple_invalid_args_in_order() {
+    let f = Fixture::new();
+    let contract = f.client.address;
+    // Non-positive amount comes before size check
+    assert_eq!(
+        f.client.try_execute_equal(&f.funder, &f.token.address, &f.addresses(0), &0),
+        Err(Ok(Error::InvalidAmount))
+    );
+
+    // Size check comes before self-payment check
+    let mut oversized = f.addresses(MAX_RECIPIENTS + 1);
+    oversized.push_back(contract);
+    assert_eq!(
+        f.client
+            .try_execute_equal(&f.funder, &f.token.address, &oversized, &100),
+        Err(Ok(Error::BatchTooLarge))
+    );
+
+    // Self-payment check comes before total calculation
+    let recipients = vec![&f.env, contract];
+    assert_eq!(
+        f.client
+            .try_execute_equal(&f.funder, &f.token.address, &recipients, &i128::MAX),
+        Err(Ok(Error::IdenticalParties))
     );
 }
 

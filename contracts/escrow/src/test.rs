@@ -685,6 +685,100 @@ fn resolve_conserves_the_escrowed_amount_at_every_split() {
 }
 
 #[test]
+fn init_with_beneficiary_as_contract_address_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START_TS);
+
+    let depositor = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(issuer);
+    let token_address = sac.address();
+    StellarAssetClient::new(&env, &token_address).mint(&depositor, &(AMOUNT * 10));
+
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+
+    // Using contract address as beneficiary should succeed (no-op transfer is harmless)
+    let result = client.try_init(
+        &depositor,
+        &contract_id,
+        &None,
+        &token_address,
+        &AMOUNT,
+        &DEADLINE,
+    );
+    assert!(result.is_ok(), "init with contract as beneficiary should succeed");
+}
+
+#[test]
+fn init_with_depositor_as_contract_address_succeeds() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START_TS);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(issuer);
+    let token_address = sac.address();
+    StellarAssetClient::new(&env, &token_address).mint(&depositor, &(AMOUNT * 10));
+
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+
+    // Using contract address as depositor should succeed
+    let result = client.try_init(
+        &contract_id,
+        &beneficiary,
+        &None,
+        &token_address,
+        &AMOUNT,
+        &DEADLINE,
+    );
+    assert!(result.is_ok(), "init with contract as depositor should succeed");
+}
+
+#[test]
+fn init_rejects_multiple_invalid_args_in_order() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START_TS);
+
+    let depositor = Address::generate(&env);
+    let beneficiary = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(issuer);
+    let token_address = sac.address();
+    StellarAssetClient::new(&env, &token_address).mint(&depositor, &(AMOUNT * 10));
+
+    let contract_id = env.register(EscrowContract, ());
+    let client = EscrowContractClient::new(&env, &contract_id);
+
+    // Both AlreadyInitialized AND InvalidAmount: AlreadyInitialized comes first
+    client.init(&depositor, &beneficiary, &None, &token_address, &AMOUNT, &DEADLINE);
+    assert_eq!(
+        client.try_init(&depositor, &beneficiary, &None, &token_address, &0, &DEADLINE),
+        Err(Ok(Error::AlreadyInitialized))
+    );
+
+    // InvalidAmount AND InvalidTimeRange: InvalidAmount comes first
+    let contract_id2 = env.register(EscrowContract, ());
+    let client2 = EscrowContractClient::new(&env, &contract_id2);
+    assert_eq!(
+        client2.try_init(
+            &depositor,
+            &beneficiary,
+            &None,
+            &token_address,
+            &0,
+            &(START_TS - 1)
+        ),
+        Err(Ok(Error::InvalidAmount))
+    );
+}
+
+#[test]
 fn resolve_rejects_a_second_call() {
     let f = Fixture::funded(true);
     f.client.dispute(&f.depositor);
