@@ -286,6 +286,19 @@ fn create_rejects_a_second_call() {
 }
 
 #[test]
+fn create_rejects_identical_sender_and_recipient() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START);
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+    let party = Address::generate(&env);
+    let token = Address::generate(&env);
+    assert_eq!(
+        c.try_create(&party, &party, &token, &RATE, &START, &STOP, &true),
+        Err(Ok(Error::IdenticalParties))
+    );
+}
+#[test]
 fn entry_points_error_before_create() {
     let env = Env::default();
     env.mock_all_auths();
@@ -633,7 +646,6 @@ fn extend_is_rejected_after_cancellation() {
         Err(Ok(Error::StreamCancelled))
     );
 }
-
 
 /// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
 /// expected value is spelled out literally rather than built from

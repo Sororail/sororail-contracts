@@ -284,6 +284,19 @@ fn create_rejects_a_second_call() {
     );
 }
 
+#[test]
+fn create_rejects_identical_grantor_and_beneficiary() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = VestingContractClient::new(&env, &env.register(VestingContract, ()));
+    let party = Address::generate(&env);
+    let token = Address::generate(&env);
+    assert_eq!(
+        c.try_create(&party, &party, &token, &TOTAL, &START, &CLIFF, &DURATION, &true),
+        Err(Ok(Error::IdenticalParties))
+    );
+}
+
 /// Pins the wire shape indexers decode (SPEC.md `indexed_events`). The
 /// expected value is spelled out literally rather than built from
 /// `events::Created`, so renaming a topic or a field fails here.

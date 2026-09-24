@@ -16,6 +16,8 @@ impl StreamContract {
     ///
     /// `start` may be in the past, which backdates accrual -- the sender is
     /// choosing to make funds immediately withdrawable.
+    ///
+    /// `sender` and `recipient` must differ; a self-stream is rejected.
     #[allow(clippy::too_many_arguments)]
     pub fn create(
         env: Env,
@@ -29,6 +31,9 @@ impl StreamContract {
     ) -> Result<(), Error> {
         if storage::is_initialized(&env) {
             return Err(Error::AlreadyInitialized);
+        }
+        if sender == recipient {
+            return Err(Error::IdenticalParties);
         }
         math::require_positive(rate_per_second)?;
         if stop <= start {
