@@ -18,6 +18,16 @@ impl StreamContract {
     /// choosing to make funds immediately withdrawable.
     ///
     /// `sender` and `recipient` must differ; a self-stream is rejected.
+    ///
+    /// # Why positional arguments (not a `CreateStreamParams` struct)
+    ///
+    /// Soroban does support a single `#[contracttype]` struct parameter, and
+    /// that would silence this lint. Positional arguments were kept anyway so
+    /// the on-chain ABI stays a flat argument list — the same shape the
+    /// TypeScript SDK's uniform build → simulate → sign → send → confirm
+    /// surface (SPEC.md) will bind without introducing a nested params object
+    /// per entry point. Revisit only if the SDK deliberately adopts struct
+    /// params across every contract.
     #[allow(clippy::too_many_arguments)]
     pub fn create(
         env: Env,

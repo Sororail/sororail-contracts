@@ -148,7 +148,7 @@ Funds held by the contract, released on a condition.
 
 Continuous per-second transfer from sender to recipient.
 
-- `create(sender, recipient, token, rate_per_second, start, stop, cancellable: bool)`
+- `create(sender, recipient, token, rate_per_second, start, stop, cancellable: bool)` — positional arguments on purpose, not a `CreateStreamParams` struct: Soroban allows a `#[contracttype]` params object (and that would clear `clippy::too_many_arguments`), but a flat ABI matches the SDK's uniform method shape without a nested params type per entry point. Same decision applies to `vesting::create`.
 - `withdraw(amount: Option<i128>)` — recipient claims accrued balance; `None` claims all available
 - `cancel()` — settles accrued amount to recipient, returns remainder to sender; only if `cancellable`
 - `balance_of(who)` — view; accrued but unwithdrawn
