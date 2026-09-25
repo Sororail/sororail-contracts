@@ -4,7 +4,7 @@
 
 > **This document is a build specification.** It describes a GitHub organization across two repositories. Build one repository at a time and finish it before starting the next.
 
-> **Revision note (2026-09-07).** This spec originally described *five* repositories — `contracts`, `sdk`, `app`, `docs` and `.github`. It has been consolidated to **two** at the maintainer's direction: `sdk`, `app` and `docs` are now one `frontend` repo, and `.github`'s templates are copied into each repo instead of inherited. Two contradictions in the original were also fixed: it named a `token_utils` crate that appeared nowhere else (the shared crate is `common`), and it gave two different build orders. Sections describing already-built code have been updated to describe what was actually built.
+> **Revision note (2026-09-07).** This spec originally described _five_ repositories — `contracts`, `sdk`, `app`, `docs` and `.github`. It has been consolidated to **two** at the maintainer's direction: `sdk`, `app` and `docs` are now one `frontend` repo, and `.github`'s templates are copied into each repo instead of inherited. Two contradictions in the original were also fixed: it named a `token_utils` crate that appeared nowhere else (the shared crate is `common`), and it gave two different build orders. Sections describing already-built code have been updated to describe what was actually built.
 
 ---
 
@@ -40,10 +40,10 @@ The design target is `openzeppelin-contracts` for Stellar payments — boring, c
 
 GitHub organization: **`sororail`**
 
-| Repo | Language | Purpose | Depends on |
-|---|---|---|---|
-| `contracts` | Rust / Soroban | The payment contracts. The core deliverable. | — |
-| `frontend` | TypeScript | The SDK, the reference application, and the docs site. | `contracts` |
+| Repo        | Language       | Purpose                                                | Depends on  |
+| ----------- | -------------- | ------------------------------------------------------ | ----------- |
+| `contracts` | Rust / Soroban | The payment contracts. The core deliverable.           | —           |
+| `frontend`  | TypeScript     | The SDK, the reference application, and the docs site. | `contracts` |
 
 ```
       contracts  (Rust, Soroban)
@@ -85,12 +85,12 @@ Within `frontend`, build the SDK first, then the app, then the docs — the docs
 
 > Composable Soroban payment contracts. Rust, `no_std`, audited-in-intent.
 >
-> **Status: built.** 156 tests passing; fmt, clippy `-D warnings` and the wasm build green. Not yet deployed, not yet audited. See the repo's own README for the current gap list.
+> **Status: built and deployed to testnet.** 161 tests passing; fmt, clippy `-D warnings` and the wasm build green. Testnet addresses recorded in `DEPLOYMENTS.md`. Not yet audited. See the repo's own README for the current gap list.
 
 ### Stack
 
 - Rust, edition 2021, toolchain pinned in `rust-toolchain.toml`
-- `soroban-sdk` **27.0.6** — the latest *stable*. Note 28.0.0-rc.1 is published to crates.io; it is a prerelease and must not be pinned.
+- `soroban-sdk` **27.0.6** — the latest _stable_. Note 28.0.0-rc.1 is published to crates.io; it is a prerelease and must not be pinned.
 - `stellar` CLI 27.1.0 for build, deploy and invoke
 - Target **`wasm32v1-none`**, not `wasm32-unknown-unknown` — soroban-sdk ≥22 no longer targets the latter
 - `cargo-nextest` as the CI test runner
@@ -214,29 +214,29 @@ Each contract is internally consistent, but a few idioms differ between contract
 
 The rule is set by how many parties may call an entry point:
 
-| Permitted callers | Signature | Check | Wrong caller gets |
-|---|---|---|---|
-| Exactly one fixed party | no `caller` argument | `stored_party.require_auth()` | an authorization failure from the host |
-| Two or more parties | `caller: Address` | an `auth::require_auth_*` guard — membership, then `require_auth` | `Error::Unauthorized` |
+| Permitted callers       | Signature            | Check                                                             | Wrong caller gets                      |
+| ----------------------- | -------------------- | ----------------------------------------------------------------- | -------------------------------------- |
+| Exactly one fixed party | no `caller` argument | `stored_party.require_auth()`                                     | an authorization failure from the host |
+| Two or more parties     | `caller: Address`    | an `auth::require_auth_*` guard — membership, then `require_auth` | `Error::Unauthorized`                  |
 
-| Contract | Single fixed party | Several permitted parties (`caller`) |
-|---|---|---|
-| `escrow` | `init`, `fund`, `cancel` (depositor); `resolve` (arbiter) | `release`, `refund` (depositor or arbiter); `dispute` (depositor or beneficiary) |
-| `stream` | `withdraw` (recipient); `cancel`, `top_up`, `extend` (sender) | — |
-| `vesting` | `claim` (beneficiary); `revoke` (grantor) | — |
-| `recurring` | `authorize` (payer); `charge` (payee) | `cancel` (payer or payee) |
-| `batch_payout` | `execute`, `execute_equal` (funder) | — |
+| Contract       | Single fixed party                                            | Several permitted parties (`caller`)                                             |
+| -------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `escrow`       | `init`, `fund`, `cancel` (depositor); `resolve` (arbiter)     | `release`, `refund` (depositor or arbiter); `dispute` (depositor or beneficiary) |
+| `stream`       | `withdraw` (recipient); `cancel`, `top_up`, `extend` (sender) | —                                                                                |
+| `vesting`      | `claim` (beneficiary); `revoke` (grantor)                     | —                                                                                |
+| `recurring`    | `authorize` (payer); `charge` (payee)                         | `cancel` (payer or payee)                                                        |
+| `batch_payout` | `execute`, `execute_equal` (funder)                           | —                                                                                |
 
 A `caller` argument exists only when the contract cannot otherwise know who is acting. It also records who acted in the emitted event (`released_by`, `refunded_by`, `raised_by`, `cancelled_by`). This is why `Unauthorized` appears only in the `escrow` and `recurring` error tables. Each contract's `errors.rs` explains why the variants it never returns are absent. The contributor-facing rules for picking a pattern are in [CONTRIBUTING.md](CONTRIBUTING.md#choosing-an-authorization-pattern).
 
 #### Lifecycle modeling: explicit `State` enum vs. optional timestamps
 
-| Contract | Lifecycle | Representation | "Still active?" helper |
-|---|---|---|---|
-| `escrow` | six states, several branches | `State` enum (`Created`, `Funded`, `Released`, `Refunded`, `Disputed`, `Resolved`) | `State::is_terminal()` |
-| `stream` | active → cancelled | `cancelled_at: Option<u64>` | `Stream::is_cancelled()` |
-| `vesting` | active → revoked | `revoked_at: Option<u64>` | `Grant::is_revoked()` |
-| `recurring` | active → cancelled, or exhausted by `max_periods` | `cancelled: bool` plus `periods_charged` against the cap | `Authorization::is_exhausted()`, `is_chargeable_at()` |
+| Contract    | Lifecycle                                         | Representation                                                                     | "Still active?" helper                                |
+| ----------- | ------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `escrow`    | six states, several branches                      | `State` enum (`Created`, `Funded`, `Released`, `Refunded`, `Disputed`, `Resolved`) | `State::is_terminal()`                                |
+| `stream`    | active → cancelled                                | `cancelled_at: Option<u64>`                                                        | `Stream::is_cancelled()`                              |
+| `vesting`   | active → revoked                                  | `revoked_at: Option<u64>`                                                          | `Grant::is_revoked()`                                 |
+| `recurring` | active → cancelled, or exhausted by `max_periods` | `cancelled: bool` plus `periods_charged` against the cap                           | `Authorization::is_exhausted()`, `is_chargeable_at()` |
 
 The rule: **use an explicit `#[contracttype]` state enum once the lifecycle has more than one non-terminal state or more than one way out of a state.** Escrow has both. `Funded` can go to three different places, and `Disputed` is a non-terminal state of its own. Encoding that as a set of flags would allow impossible combinations such as "released and disputed". An enum makes illegal transitions unrepresentable and gives each one a named error.
 
@@ -316,12 +316,12 @@ A real application, not a demo page — but its purpose is demonstrative, so fav
 
 **Features**
 
-- *Wallet and account* — connect via Freighter, network detection with a hard warning on mismatch, testnet faucet link and a clear testnet-only banner.
-- *Payroll* (`batch_payout` + `recurring`) — recipient list with CSV import, preview of total and per-recipient amounts and estimated fees before signing, batch execution with per-recipient confirmation, scheduled recurring runs. Duplicate detection belongs here, in the CSV import — the contract deliberately allows duplicates.
-- *Streams* (`stream`) — create with a live preview of the accrual curve, dashboard of incoming and outgoing streams with balances ticking in real time, withdraw / top up / extend / cancel.
-- *Vesting* (`vesting`) — create a grant with a visual schedule showing cliff and linear ramp, beneficiary view with claimable amount and next unlock, revoke for revocable grants.
-- *Escrow* (`escrow`) — create, fund, release, refund, optional arbiter with dispute and split-resolution flow.
-- *History* — unified event feed across all contracts from the indexer, CSV export.
+- _Wallet and account_ — connect via Freighter, network detection with a hard warning on mismatch, testnet faucet link and a clear testnet-only banner.
+- _Payroll_ (`batch_payout` + `recurring`) — recipient list with CSV import, preview of total and per-recipient amounts and estimated fees before signing, batch execution with per-recipient confirmation, scheduled recurring runs. Duplicate detection belongs here, in the CSV import — the contract deliberately allows duplicates.
+- _Streams_ (`stream`) — create with a live preview of the accrual curve, dashboard of incoming and outgoing streams with balances ticking in real time, withdraw / top up / extend / cancel.
+- _Vesting_ (`vesting`) — create a grant with a visual schedule showing cliff and linear ramp, beneficiary view with claimable amount and next unlock, revoke for revocable grants.
+- _Escrow_ (`escrow`) — create, fund, release, refund, optional arbiter with dispute and split-resolution flow.
+- _History_ — unified event feed across all contracts from the indexer, CSV export.
 
 **Backend**
 
@@ -393,7 +393,7 @@ The credibility of this project rests on not overstating its maturity. A library
 
 ## Roadmap
 
-**v0.1 — foundations.** All six contract crates with full tests. ✅ Contracts done; testnet deployment and contract-spec release outstanding.
+**v0.1 — foundations.** All six contract crates with full tests. ✅ Contracts done. ✅ Deployed to testnet (see `DEPLOYMENTS.md`). Contract-spec release still outstanding.
 
 **v0.2 — the SDK.** SDK clients for all five contracts, error decoding, Freighter and keypair signers, runnable examples. `MAX_RECIPIENTS` re-measured against testnet. The one-position-per-instance question settled.
 
@@ -413,7 +413,7 @@ This spec was written from a snapshot and the Soroban toolchain moves quickly. C
 2. ✅ **Current `stellar` CLI syntax** — 27.1.0. The CLI was renamed from `soroban` and command shapes have changed across releases; older tutorials will be wrong.
 3. **Protocol version on testnet** and which host functions are available. Not yet checked — needs network access.
 4. ✅ **Current `@stellar/stellar-sdk` major version** — 17.0.1.
-5. ⚠️ **Resource limits** — instruction count, ledger entry size, transaction size. Measured *locally* at 40 recipients for `batch_payout`; the local environment does not model transaction size, so this must be re-measured against testnet.
+5. ⚠️ **Resource limits** — instruction count, ledger entry size, transaction size. Measured _locally_ at 40 recipients for `batch_payout`; the local environment does not model transaction size, so this must be re-measured against testnet.
 6. **Whether the Stellar Asset Contract interface has changed** for the token calls the contracts make. `transfer`, `transfer_from` and `approve` all work as expected against soroban-sdk 27's test SAC, but this has not been checked against a live network.
 
 Also note, discovered while building: **`env.events().publish` is deprecated** in soroban-sdk 27 in favour of `#[contractevent]`. Any guidance written against the older API will produce deprecation warnings that CI treats as errors.
@@ -427,7 +427,6 @@ Where current documentation contradicts this spec, current documentation wins. N
 Issues labelled `good-first-issue` are scoped so that someone new to Soroban can complete them. Start there, comment to claim, and open a draft PR early — an in-progress PR with questions is more useful than a perfect one that arrives three weeks late.
 
 If you are unsure whether something is in scope, open an issue before writing code.
-
 
 ## Updates
 
