@@ -9,6 +9,18 @@ until an external audit is complete.
 This is stated here, in the README, and in the reference application's UI. The
 credibility of this project rests on not overstating its maturity.
 
+## Maintainers
+
+| Role               | GitHub                                                   | Contact                                 |
+| ------------------ | -------------------------------------------------------- | --------------------------------------- |
+| Primary maintainer | [@Chidubemkingsley](https://github.com/Chidubemkingsley) | via GitHub private advisory (preferred) |
+| Backup escalation  | [@Chidubemkingsley](https://github.com/Chidubemkingsley) | rubelu2017@gmail.com                    |
+
+The primary maintainer is responsible for meeting the response-time commitments
+below. If a report receives no acknowledgement within 72 hours, use the backup
+contact directly. Both contacts are monitored; the private advisory channel is
+preferred because it keeps the disclosure trail in one place.
+
 ## Reporting a vulnerability
 
 **Do not open a public issue for a security report.**
@@ -30,6 +42,16 @@ In scope: the contracts in this repository — incorrect authorization, loss or
 lock-up of funds, conservation violations (withdrawn + refunded + remaining not
 equalling deposited), arithmetic errors, and state-machine transitions that
 should be illegal.
+
+**Note on `batch_payout`:** the conservation-invariant item above applies to
+`escrow`, `stream`, `vesting`, and `recurring`, all of which hold deposited
+funds on behalf of parties. `batch_payout` is stateless and holds no funds
+between calls — it routes a transfer atomically and exits, so there is no
+deposited balance and no conservation invariant to violate in the same sense.
+Security findings against `batch_payout` are still in scope (incorrect
+authorization, arithmetic errors in the fee/amount split, or a malformed
+recipients list that causes unexpected behaviour), but conservation-invariant
+analysis does not apply to it.
 
 Out of scope: findings that require a compromised wallet or leaked key,
 issues in the Stellar network or `soroban-sdk` itself (report those upstream),
@@ -84,13 +106,13 @@ pinned by commit SHA). It scans `Cargo.lock` against the
 [RustSec advisory database](https://rustsec.org/advisories/).
 
 **Failure policy.** The action has no severity-threshold setting. It decides
-pass/fail by advisory *type*, not by CVSS score:
+pass/fail by advisory _type_, not by CVSS score:
 
-| Finding | Effect on CI |
-|---|---|
-| Vulnerability advisory, **any severity** (low, medium, high or critical, or no CVSS score at all) | **Fails the build** |
-| Informational advisory: `unmaintained`, `unsound`, `notice` | Reported as a warning, build passes |
-| Yanked crate version | Reported as a warning, build passes |
+| Finding                                                                                           | Effect on CI                        |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Vulnerability advisory, **any severity** (low, medium, high or critical, or no CVSS score at all) | **Fails the build**                 |
+| Informational advisory: `unmaintained`, `unsound`, `notice`                                       | Reported as a warning, build passes |
+| Yanked crate version                                                                              | Reported as a warning, build passes |
 
 In other words, a dependency with any known vulnerability blocks the PR, even
 a low-severity one. Unmaintained, unsound and yanked dependencies are
