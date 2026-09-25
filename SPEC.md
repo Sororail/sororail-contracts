@@ -127,7 +127,9 @@ Each is independently deployable; composition happens at the call site, not thro
 Not a contract — a shared library crate.
 
 - `Error` enum with a stable, documented numeric mapping, one shared enum across the org with a reserved range per contract. **Never renumber or remove a released variant**; clients decode failures by integer.
-- Storage key enums and TTL/bump helpers. Soroban state expires; every contract must extend TTL on access, and this logic lives here so it is written once.
+- Storage key enums and TTL/bump helpers. Soroban state expires; mutating
+  operations extend TTL, while views remain read-only. Long-lived positions
+  expose `bump()` so an integrator can keep them alive.
 - `require_auth` guard helpers. These check **membership before calling `require_auth`** — the reverse order would prompt an address that was never permitted to act.
 - Basis-point math with explicit overflow handling. No silent saturation. `split_bps` derives the remainder by subtraction so splits conserve the total exactly.
 

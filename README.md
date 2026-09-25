@@ -93,9 +93,13 @@ are the most common Soroban vulnerability class, so guards live in
 `sororail_common::auth` and every privileged entry point has a test asserting it
 fails for an unauthorized caller.
 
-**State expires.** Soroban archives entries that are not extended. Every entry
-point that touches storage extends the TTL of what it touched, using the helpers
-in `sororail_common::storage`.
+**State expires.** Soroban archives entries that are not extended. Mutating
+entry points extend the instance TTL, while read-only views do not write a
+ledger entry. Integrators operating grants, streams, subscriptions, or
+escrows longer than 30 days should schedule the contract's public `bump()`
+entry point before expiry. A caller pays the normal transaction and ledger
+write fees; if the instance has already been archived, it must first be
+restored through the network's archival-state restoration flow.
 
 
 ## Contract Immutability and Migration
