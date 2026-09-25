@@ -139,6 +139,12 @@ jobs:
       checks: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Failure policy (see SECURITY.md, "Automated checks"): audit-check has
+      # no severity threshold. Any vulnerability advisory fails this job,
+      # whatever its CVSS severity. Informational advisories (unmaintained,
+      # unsound, notice) and yanked crates are reported as warnings only.
+      # To ignore an advisory, add its RUSTSEC ID to an `ignore:` input here
+      # with a comment explaining why, and update SECURITY.md.
       - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
