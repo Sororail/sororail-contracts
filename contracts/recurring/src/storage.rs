@@ -1,5 +1,5 @@
-use soroban_sdk::{contracttype, Env};
-use sororail_common::{storage as ttl, Error, impl_single_position_storage};
+use soroban_sdk::contracttype;
+use sororail_common::impl_single_position_storage;
 
 use crate::types::Authorization;
 
