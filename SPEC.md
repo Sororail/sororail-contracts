@@ -206,6 +206,29 @@ Non-negotiable, and the main thing that makes this credible as a dependency:
 - Integration tests in `/tests` that deploy real token contracts and exercise full lifecycles.
 - Target ≥90% line coverage, enforced in CI.
 
+### Cross-contract design conventions
+
+Each contract is internally consistent, but a few idioms differ between contracts on purpose. They are recorded here so a contributor moving between crates does not read a deliberate difference as drift.
+
+#### Authorization: `caller` argument vs. `require_auth` on a fixed party
+
+The rule is set by how many parties may call an entry point:
+
+| Permitted callers | Signature | Check | Wrong caller gets |
+|---|---|---|---|
+| Exactly one fixed party | no `caller` argument | `stored_party.require_auth()` | an authorization failure from the host |
+| Two or more parties | `caller: Address` | an `auth::require_auth_*` guard — membership, then `require_auth` | `Error::Unauthorized` |
+
+| Contract | Single fixed party | Several permitted parties (`caller`) |
+|---|---|---|
+| `escrow` | `init`, `fund`, `cancel` (depositor); `resolve` (arbiter) | `release`, `refund` (depositor or arbiter); `dispute` (depositor or beneficiary) |
+| `stream` | `withdraw` (recipient); `cancel`, `top_up`, `extend` (sender) | — |
+| `vesting` | `claim` (beneficiary); `revoke` (grantor) | — |
+| `recurring` | `authorize` (payer); `charge` (payee) | `cancel` (payer or payee) |
+| `batch_payout` | `execute`, `execute_equal` (funder) | — |
+
+A `caller` argument exists only when the contract cannot otherwise know who is acting. It also records who acted in the emitted event (`released_by`, `refunded_by`, `raised_by`, `cancelled_by`). This is why `Unauthorized` appears only in the `escrow` and `recurring` error tables. Each contract's `errors.rs` explains why the variants it never returns are absent. The contributor-facing rules for picking a pattern are in [CONTRIBUTING.md](CONTRIBUTING.md#choosing-an-authorization-pattern).
+
 ### Open design question
 
 Every contract is currently **one position per deployed instance** — one escrow, one stream, one grant, one subscription. That follows the entry-point signatures above, which take no position id.
