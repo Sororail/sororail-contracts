@@ -101,6 +101,49 @@ jobs:
         with:
           name: specs
           path: dist/specs/*.json
+      # Guard against reintroducing a `pub type` alias in a `#[contractimpl]`
+      # entry-point signature. `#[contractimpl]` resolves types syntactically,
+      # not semantically: an alias in argument or return position emits a spec
+      # referencing a type that does not exist, which silently breaks every
+      # client while all Rust tests pass (see DEPLOYMENTS.md § "One bug this
+      # deployment caught" and contracts/batch_payout/src/types.rs).
+      #
+      # The check:
+      #   1. Collect every `pub type Foo = …` alias defined in each
+      #      contract's own source files.
+      #   2. For each such alias, scan the contract's `contract.rs` for any
+      #      use of that name in a function signature (fn … Foo … or -> Foo).
+      #   3. Fail with a clear message if any match is found.
+      #
+      # This is intentionally conservative: it only looks at `contract.rs`
+      # (where `#[contractimpl]` blocks live) and only at names that are
+      # actually aliased in the same crate, so it produces no false positives
+      # for types from `soroban_sdk` or external crates.
+      - name: check no pub-type aliases in contractimpl signatures
+        shell: bash
+        run: |
+          fail=0
+          for contract_dir in contracts/*/; do
+            contract_rs="${contract_dir}src/contract.rs"
+            [ -f "$contract_rs" ] || continue
+
+            # Collect all `pub type Alias` names defined anywhere in this crate.
+            aliases=$(grep -rh --include="*.rs" \
+              -oP '(?<=^pub type )\w+' "$contract_dir" 2>/dev/null || true)
+            [ -z "$aliases" ] && continue
+
+            for alias in $aliases; do
+              # Match the alias as a word in a fn signature line:
+              #   fn foo(bar: Alias, …)  or  ) -> Alias
+              # We check any line containing `fn ` or `->` in contract.rs.
+              if grep -nP "\bfn\b.*\b${alias}\b|\->\s*${alias}\b" \
+                  "$contract_rs" > /dev/null 2>&1; then
+                echo "::error file=${contract_rs}::pub type alias '${alias}' appears in a #[contractimpl] signature in ${contract_rs}. Spell the type out in full — see contracts/batch_payout/src/types.rs for why."
+                fail=1
+              fi
+            done
+          done
+          exit "$fail"
 
   msrv:
     name: msrv (1.91)

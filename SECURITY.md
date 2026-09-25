@@ -54,6 +54,28 @@ Integrators relying on escrow should document this assumption: arbiters are
 trusted to respond within 7 days of the original deadline, or funds become
 recoverable by the depositor unilaterally.
 
+## Public disclosure and security advisories
+
+Once a vulnerability is fixed and the patched release is published, we will
+publish a GitHub Security Advisory on this repository so that downstream
+integrators can assess their retroactive exposure. The advisory will include:
+the affected versions, a description of the impact, the fix commit, and credit
+to the reporter (unless they asked to remain anonymous).
+
+Our target timeline from fix-merged to advisory-published is **14 days**. This
+window gives integrators who track the repository time to upgrade before the
+full technical details are public, while keeping the dark period short enough
+that people who missed the patch notice are not left exposed indefinitely.
+
+If coordinated disclosure with a third party (e.g. a downstream project or the
+Stellar bug bounty program) requires a longer embargo, we will say so in our
+initial response to the reporter and agree on a date. We will not extend an
+embargo past **90 days** from the original report without the reporter's
+explicit consent.
+
+For reporters: you are welcome to publish your own write-up after the advisory
+goes live. Please link to the advisory so readers can verify the fix.
+
 ## Automated checks
 
 CI runs `cargo audit` on every pull request. Adding CoinFabrik's Scout, an
