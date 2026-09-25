@@ -27,6 +27,25 @@ use soroban_sdk::contracterror;
 /// carries a table of the variants it can raise and a "What is absent, and
 /// why" section naming the shared variants it never returns -- keep both in
 /// step when adding an error path to a contract.
+///
+/// # Generic errors that are currently single-contract
+///
+/// Some variants in the generic range (1–19) are currently used by only one
+/// contract but remain generic to allow future reuse without ABI breakage:
+///
+/// - **`DeadlineNotReached` (11)** and **`DeadlinePassed` (12)**: Currently
+///   only `escrow` uses these, but any future time-locked contract (e.g., a
+///   vested airdrop, a time-based auction) would naturally reuse them. Keeping
+///   them generic avoids having to add `EscrowDeadlineNotReached` now and a
+///   separate `VestingDeadlineNotReached` later, fragmenting what is
+///   conceptually the same failure mode.
+///
+/// - **`InvalidState` (10)** and **`InsufficientBalance` (13)**: Reserved for
+///   lifecycle and balance checks that contracts currently handle with
+///   contract-specific variants (e.g., `EscrowNotFunded`, `StreamCancelled`).
+///   Every contract prefers a more specific error today, but these remain
+///   available if a future contract's design benefits from a generic state or
+///   balance check without needing a new numbered variant.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
@@ -51,12 +70,26 @@ pub enum Error {
     /// Basis points outside the inclusive range 0..=10000.
     InvalidBasisPoints = 9,
     /// The action is not legal from the current state.
+    ///
+    /// Reserved for generic state checks. Currently unused; contracts prefer
+    /// contract-specific variants like `EscrowNotFunded` or `StreamCancelled`.
+    /// See module docs for rationale.
     InvalidState = 10,
     /// The deadline has not yet been reached.
+    ///
+    /// Currently used by `escrow::refund`. Kept generic for future time-locked
+    /// contracts. See module docs for rationale.
     DeadlineNotReached = 11,
     /// The deadline has already passed.
+    ///
+    /// Currently used by `escrow::fund`. Kept generic for future time-locked
+    /// contracts. See module docs for rationale.
     DeadlinePassed = 12,
     /// Not enough balance to satisfy the request.
+    ///
+    /// Reserved for generic balance checks. Currently unused; contracts let
+    /// token transfers fail with the token's own error or use contract-specific
+    /// variants like `StreamInsufficientAccrued`. See module docs for rationale.
     InsufficientBalance = 13,
     /// A duration was zero where a positive span is required.
     InvalidDuration = 14,

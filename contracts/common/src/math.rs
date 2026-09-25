@@ -4,6 +4,27 @@
 //! panicking. Saturation is the dangerous default for balances: it silently
 //! converts an overflow into a wrong-but-plausible number, and a payment
 //! contract that reports a wrong balance is worse than one that refuses to act.
+//!
+//! # Basis-point math: single-consumer functions in a shared crate
+//!
+//! [`mul_bps`] and [`split_bps`] are currently used only by `escrow::resolve`,
+//! but they live here rather than in `contracts/escrow/src/` for two reasons:
+//!
+//! 1. **Correctness by proximity**: The no-rounding-leakage invariant that
+//!    `split_bps` provides is subtle and security-critical for dispute
+//!    resolution. Keeping it alongside the other checked math makes that
+//!    property visible in the shared test suite and documents it as a
+//!    general-purpose building block, not an escrow implementation detail.
+//!
+//! 2. **Future reuse without duplication**: Any future contract that needs
+//!    proportional splits (fee distribution, profit sharing, multi-party
+//!    settlements) can use these immediately without rediscovering the
+//!    remainder-by-subtraction pattern or reintroducing the tests.
+//!
+//! If no other contract adopts them by the time the codebase ships 1.0, we may
+//! revisit this and move them into escrow. Until then, the cost of a few extra
+//! lines in a shared crate is lower than the risk of reimplementing bps math
+//! incorrectly in a future contract.
 
 use crate::Error;
 
@@ -56,6 +77,8 @@ pub fn mul_div(a: i128, b: i128, d: i128) -> Result<i128, Error> {
 
 /// `amount * bps / 10000`, rounded toward zero.
 ///
+/// Currently used only by `escrow::resolve`. See module docs for rationale.
+///
 /// # Examples
 ///
 /// ```
@@ -75,6 +98,8 @@ pub fn mul_bps(amount: i128, bps: u32) -> Result<i128, Error> {
 /// `second` is computed as the remainder rather than as `10000 - bps`, so the
 /// two parts always sum to exactly `amount` with no rounding leakage. This is
 /// the property escrow dispute resolution depends on.
+///
+/// Currently used only by `escrow::resolve`. See module docs for rationale.
 ///
 /// # Examples
 ///
