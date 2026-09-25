@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Workspace test `tests/tests/event_topics.rs` asserting every `#[contractevent]` declares exactly `[<crate name>, <snake_case action>]` topics (#64).
+- SPEC.md "Cross-contract design conventions": when an entry point takes a `caller` argument vs. calling `require_auth` on a fixed party (#63), and when a lifecycle is a `State` enum vs. an optional timestamp (#66).
+- CONTRIBUTING.md "Choosing an authorization pattern" (#63).
+
+### Changed
+
+- Every contract's `errors.rs` now documents which shared variants it never returns, and why (#67). The `recurring` note wrongly claimed `Unauthorized` never appears and has been corrected. `escrow` now lists `DeadlinePassed`, `Overflow` and `EscrowNotCancellable`, `recurring` lists `InvalidTimeRange` and `Overflow`, and `batch_payout` lists `IdenticalParties`, all of which were raised but undocumented.
+
 ## [0.1.0] - 2026-09-07
 
 ### Fixed
