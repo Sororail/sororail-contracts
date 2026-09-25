@@ -104,6 +104,10 @@ impl Grant {
     }
 
     /// Whether the grant has been revoked.
+    ///
+    /// The lifecycle is binary and one-way, so it is modelled by the
+    /// `revoked_at` timestamp (which vesting math needs anyway) rather than a
+    /// `State` enum like escrow's. See "Lifecycle modeling" in SPEC.md.
     pub fn is_revoked(&self) -> bool {
         self.revoked_at.is_some()
     }

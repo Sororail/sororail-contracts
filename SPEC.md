@@ -206,6 +206,48 @@ Non-negotiable, and the main thing that makes this credible as a dependency:
 - Integration tests in `/tests` that deploy real token contracts and exercise full lifecycles.
 - Target ≥90% line coverage, enforced in CI.
 
+### Cross-contract design conventions
+
+Each contract is internally consistent, but a few idioms differ between contracts on purpose. They are recorded here so a contributor moving between crates does not read a deliberate difference as drift.
+
+#### Authorization: `caller` argument vs. `require_auth` on a fixed party
+
+The rule is set by how many parties may call an entry point:
+
+| Permitted callers | Signature | Check | Wrong caller gets |
+|---|---|---|---|
+| Exactly one fixed party | no `caller` argument | `stored_party.require_auth()` | an authorization failure from the host |
+| Two or more parties | `caller: Address` | an `auth::require_auth_*` guard — membership, then `require_auth` | `Error::Unauthorized` |
+
+| Contract | Single fixed party | Several permitted parties (`caller`) |
+|---|---|---|
+| `escrow` | `init`, `fund`, `cancel` (depositor); `resolve` (arbiter) | `release`, `refund` (depositor or arbiter); `dispute` (depositor or beneficiary) |
+| `stream` | `withdraw` (recipient); `cancel`, `top_up`, `extend` (sender) | — |
+| `vesting` | `claim` (beneficiary); `revoke` (grantor) | — |
+| `recurring` | `authorize` (payer); `charge` (payee) | `cancel` (payer or payee) |
+| `batch_payout` | `execute`, `execute_equal` (funder) | — |
+
+A `caller` argument exists only when the contract cannot otherwise know who is acting. It also records who acted in the emitted event (`released_by`, `refunded_by`, `raised_by`, `cancelled_by`). This is why `Unauthorized` appears only in the `escrow` and `recurring` error tables. Each contract's `errors.rs` explains why the variants it never returns are absent. The contributor-facing rules for picking a pattern are in [CONTRIBUTING.md](CONTRIBUTING.md#choosing-an-authorization-pattern).
+
+#### Lifecycle modeling: explicit `State` enum vs. optional timestamps
+
+| Contract | Lifecycle | Representation | "Still active?" helper |
+|---|---|---|---|
+| `escrow` | six states, several branches | `State` enum (`Created`, `Funded`, `Released`, `Refunded`, `Disputed`, `Resolved`) | `State::is_terminal()` |
+| `stream` | active → cancelled | `cancelled_at: Option<u64>` | `Stream::is_cancelled()` |
+| `vesting` | active → revoked | `revoked_at: Option<u64>` | `Grant::is_revoked()` |
+| `recurring` | active → cancelled, or exhausted by `max_periods` | `cancelled: bool` plus `periods_charged` against the cap | `Authorization::is_exhausted()`, `is_chargeable_at()` |
+
+The rule: **use an explicit `#[contracttype]` state enum once the lifecycle has more than one non-terminal state or more than one way out of a state.** Escrow has both. `Funded` can go to three different places, and `Disputed` is a non-terminal state of its own. Encoding that as a set of flags would allow impossible combinations such as "released and disputed". An enum makes illegal transitions unrepresentable and gives each one a named error.
+
+A binary, one-way lifecycle (active, then permanently stopped) stays as an `Option<u64>` timestamp. The timestamp is data the contract needs anyway: `stream` stops accrual at `cancelled_at`, and `vesting` freezes the vested amount at `revoked_at`. An enum would therefore duplicate that field rather than replace it. `recurring` uses a plain `bool` because nothing is computed from the cancellation time. That time is emitted in the `Cancelled` event but not stored.
+
+Conventions that hold regardless of representation:
+
+- The "is this position still usable?" question is always answered by a named helper on the type in `types.rs` (`is_terminal`, `is_cancelled`, `is_revoked`, `is_exhausted`), never by inspecting fields inline in `contract.rs`.
+- Every illegal transition returns a contract-specific typed error (`EscrowClosed`, `StreamCancelled`, `VestingRevoked`, `RecurringCancelled`), never the generic `InvalidState` and never a panic.
+- If a binary lifecycle later gains a second non-terminal state (for example, a pausable stream), migrate it to a state enum rather than adding a second `Option` field. Changing a stored `#[contracttype]` is an ABI and storage-layout break, so treat it as one.
+
 ### Open design question
 
 Every contract is currently **one position per deployed instance** — one escrow, one stream, one grant, one subscription. That follows the entry-point signatures above, which take no position id.
