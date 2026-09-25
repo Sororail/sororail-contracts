@@ -78,7 +78,7 @@ impl TestEnv {
     ///
     /// The returned [`TokenClient`] borrows from `self`, so it lives as long as
     /// the `TestEnv` does.
-    pub fn make_token(&self, initial_supply: i128) -> (TokenClient, Address) {
+    pub fn make_token(&self, initial_supply: i128) -> (TokenClient<'_>, Address) {
         let issuer = Address::generate(&self.env);
         let token_address = self
             .env

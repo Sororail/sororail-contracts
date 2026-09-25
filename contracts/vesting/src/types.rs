@@ -89,8 +89,8 @@ impl Grant {
             self.duration > 0,
             "linear vesting branch requires non-zero duration"
         );
-        let elapsed = math::sub(effective as i128, self.start as i128)?;
-        math::mul_div(self.total, elapsed, self.duration as i128)
+        let elapsed = math::sub(i128::from(effective), i128::from(self.start))?;
+        math::mul_div(self.total, elapsed, i128::from(self.duration))
     }
 
     /// Vested but not yet claimed, as of `at`.

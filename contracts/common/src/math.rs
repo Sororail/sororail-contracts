@@ -90,7 +90,7 @@ pub fn mul_bps(amount: i128, bps: u32) -> Result<i128, Error> {
     if bps > MAX_BPS {
         return Err(Error::InvalidBasisPoints);
     }
-    mul_div(amount, bps as i128, BPS_DENOMINATOR)
+    mul_div(amount, i128::from(bps), BPS_DENOMINATOR)
 }
 
 /// Splits `amount` into `(first, second)` where `first` is `bps` of the total.

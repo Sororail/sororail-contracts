@@ -28,6 +28,16 @@ all = { level = "deny", priority = -1 }
 # Money math must go through the checked helpers in sororail_common::math.
 # Test files opt out with a file-level #![allow].
 arithmetic_side_effects = "deny"
+# Casts on amounts/timestamps must be explicit and provably lossless (#49):
+# narrowing, sign-dropping or wrapping `as` casts are denied outright, and
+# lossless widening must be spelled `i128::from(x)` so any remaining `as`
+# on money stands out in review. Full `clippy::pedantic` is deliberately not
+# enabled: on this codebase it is dominated by doc-style lints (`# Errors`
+# sections, backticks) that add noise without catching money bugs.
+cast_possible_truncation = "deny"
+cast_sign_loss = "deny"
+cast_possible_wrap = "deny"
+cast_lossless = "deny"
 
 # Money math must trap on overflow rather than wrap or saturate, in release
 # builds as well as debug. See contracts/common/src/math.rs.
