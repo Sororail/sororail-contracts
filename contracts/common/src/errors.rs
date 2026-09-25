@@ -22,6 +22,11 @@ use soroban_sdk::contracterror;
 /// | 100–119   | `batch_payout` |
 ///
 /// Ranges are deliberately sparse so a contract can grow without colliding.
+///
+/// Not every contract returns every variant. Each contract's own `errors.rs`
+/// carries a table of the variants it can raise and a "What is absent, and
+/// why" section naming the shared variants it never returns -- keep both in
+/// step when adding an error path to a contract.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
