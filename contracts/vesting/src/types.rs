@@ -53,6 +53,18 @@ impl Grant {
     /// Pure: no storage, no environment, so it is testable in isolation.
     /// Revocation freezes the schedule, so vesting is evaluated at the earlier
     /// of `at` and the revocation timestamp.
+    ///
+    /// # Overflow ceiling
+    ///
+    /// This function computes `total * elapsed / duration` using [`math::mul_div`],
+    /// which errors on overflow rather than wrapping. For a given duration, the
+    /// maximum safe `total` is approximately `i128::MAX / duration_in_seconds`.
+    ///
+    /// For example, with a 10-year vesting duration (~315,576,000 seconds), the
+    /// maximum total before `Overflow` is roughly 29 million tokens. Integrators
+    /// should size their token's decimals and supply to stay within this limit:
+    /// a token with 18 decimal places has a per-vesting-grant ceiling of about
+    /// 29 femto-tokens per second of duration, or ~1 million base units for 10 years.
     pub fn vested_amount(&self, at: u64) -> Result<i128, Error> {
         let effective = match self.revoked_at {
             Some(revoked) => at.min(revoked),
