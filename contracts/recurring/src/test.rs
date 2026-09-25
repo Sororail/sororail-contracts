@@ -3,16 +3,25 @@
 #![allow(clippy::arithmetic_side_effects)]
 
 use soroban_sdk::{
-    testutils::{Address as _, Events as _, Ledger as _},
+    testutils::{Address as _, Events as _, Ledger as _, Storage as _},
     token::{StellarAssetClient, TokenClient},
     Address, Env, Event,
 };
-use sororail_common::Error;
+use sororail_common::{storage::INSTANCE_BUMP, Error};
 
 use crate::{
     contract::{RecurringContract, RecurringContractClient},
     events::{Authorized, Cancelled, Charged},
 };
+
+#[test]
+fn bump_restores_the_instance_ttl_after_ledger_advance() {
+    let f = Fixture::new();
+    f.env.ledger().set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
+    assert!(f.env.storage().instance().get_ttl() < INSTANCE_BUMP);
+    f.client.bump();
+    assert_eq!(f.env.storage().instance().get_ttl(), INSTANCE_BUMP);
+}
 
 const AMOUNT: i128 = 10_000;
 const PERIOD: u64 = 2_592_000; // 30 days

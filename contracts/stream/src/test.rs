@@ -4,17 +4,26 @@
 
 use soroban_sdk::{
     map,
-    testutils::{Address as _, Events as _, Ledger as _},
+    testutils::{Address as _, Events as _, Ledger as _, Storage as _},
     token::TokenClient,
     vec, Address, Env, IntoVal, Symbol, Val,
 };
-use sororail_common::{testutils::TestEnv, Error};
+use sororail_common::{storage::INSTANCE_BUMP, testutils::TestEnv, Error};
 
 use crate::{
     contract::{StreamContract, StreamContractClient},
     events::{Cancelled, Created, Withdrawn},
     types::Stream,
 };
+
+#[test]
+fn bump_restores_the_instance_ttl_after_ledger_advance() {
+    let f = Fixture::new();
+    f.env.ledger().set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
+    assert!(f.env.storage().instance().get_ttl() < INSTANCE_BUMP);
+    f.client.bump();
+    assert_eq!(f.env.storage().instance().get_ttl(), INSTANCE_BUMP);
+}
 
 const RATE: i128 = 100;
 const START: u64 = 1_000_000;

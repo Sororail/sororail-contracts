@@ -113,7 +113,7 @@ pub enum Error {
     EscrowNotCancellable = 26,
 
     // ----- stream: 40–59 -----
-    /// No stream exists for the given id.
+    /// Reserved for the future id-keyed stream design.
     StreamNotFound = 40,
     /// The stream has already been cancelled.
     StreamCancelled = 41,
@@ -125,7 +125,7 @@ pub enum Error {
     StreamNotExtendable = 44,
 
     // ----- vesting: 60–79 -----
-    /// No grant exists for the given id.
+    /// Reserved for the future id-keyed vesting design.
     VestingNotFound = 60,
     /// Nothing is claimable yet -- the cliff has not been reached.
     VestingCliffNotReached = 61,
@@ -139,7 +139,7 @@ pub enum Error {
     VestingNothingToClaim = 65,
 
     // ----- recurring: 80–99 -----
-    /// No authorization exists for the given id.
+    /// Reserved for the future id-keyed recurring design.
     RecurringNotFound = 80,
     /// The authorization has been cancelled.
     RecurringCancelled = 81,

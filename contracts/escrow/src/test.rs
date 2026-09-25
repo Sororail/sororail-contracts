@@ -1,15 +1,24 @@
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::{Address as _, Ledger as _, Storage as _},
     token::{StellarAssetClient, TokenClient},
     Address, Env,
 };
-use sororail_common::Error;
+use sororail_common::{storage::INSTANCE_BUMP, Error};
 
 use crate::{
     contract::{EscrowContract, EscrowContractClient},
     events::{Cancelled, Created, Disputed, Funded, Refunded, Released, Resolved},
     types::State,
 };
+
+#[test]
+fn bump_restores_the_instance_ttl_after_ledger_advance() {
+    let f = Fixture::new(false);
+    f.env.ledger().set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
+    assert!(f.env.storage().instance().get_ttl() < INSTANCE_BUMP);
+    f.client.bump();
+    assert_eq!(f.env.storage().instance().get_ttl(), INSTANCE_BUMP);
+}
 
 const AMOUNT: i128 = 1_000_000;
 const START_TS: u64 = 1_000_000;
