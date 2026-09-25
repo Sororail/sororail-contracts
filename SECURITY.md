@@ -78,8 +78,34 @@ goes live. Please link to the advisory so readers can verify the fix.
 
 ## Automated checks
 
-CI runs `cargo audit` on every pull request. Adding CoinFabrik's Scout, an
-open-source static analyzer built for Soroban, is tracked as follow-up work.
+CI runs `cargo audit` on every pull request and on every push to `main`, via
+the `audit` job in `.github/workflows/ci.yml` (`rustsec/audit-check` v2.0.0,
+pinned by commit SHA). It scans `Cargo.lock` against the
+[RustSec advisory database](https://rustsec.org/advisories/).
+
+**Failure policy.** The action has no severity-threshold setting. It decides
+pass/fail by advisory *type*, not by CVSS score:
+
+| Finding | Effect on CI |
+|---|---|
+| Vulnerability advisory, **any severity** (low, medium, high or critical, or no CVSS score at all) | **Fails the build** |
+| Informational advisory: `unmaintained`, `unsound`, `notice` | Reported as a warning, build passes |
+| Yanked crate version | Reported as a warning, build passes |
+
+In other words, a dependency with any known vulnerability blocks the PR, even
+a low-severity one. Unmaintained, unsound and yanked dependencies are
+surfaced in the "Security audit" check output but do not block. Maintainers
+should still review those warnings when they appear. PRs from forks follow
+the same rule: the action can't publish a check run there, so it prints the
+report to the job log and fails the job itself.
+
+No advisories are currently ignored. Ignoring one requires adding its
+`RUSTSEC-YYYY-NNNN` ID to the action's `ignore` input in `ci.yml`, together
+with a comment explaining why it doesn't affect these contracts, and it must
+go through normal review.
+
+Adding CoinFabrik's Scout, an open-source static analyzer built for Soroban,
+is tracked as follow-up work.
 
 The Stellar bug bounty covers Soroban platform exploits; contract-level
 findings in this repository are ours, not theirs.
