@@ -14,7 +14,7 @@ pub fn is_initialized(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Escrow)
 }
 
-/// Loads the agreement, extending the instance TTL on the way through.
+/// Loads the agreement for a mutating operation and extends the instance TTL.
 pub fn load(env: &Env) -> Result<Escrow, Error> {
     let escrow = env
         .storage()
@@ -23,6 +23,14 @@ pub fn load(env: &Env) -> Result<Escrow, Error> {
         .ok_or(Error::NotInitialized)?;
     ttl::extend_instance(env);
     Ok(escrow)
+}
+
+/// Loads the agreement without changing ledger state.
+pub fn load_view(env: &Env) -> Result<Escrow, Error> {
+    env.storage()
+        .instance()
+        .get(&DataKey::Escrow)
+        .ok_or(Error::NotInitialized)
 }
 
 /// Persists the agreement and extends the instance TTL.

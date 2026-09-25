@@ -219,7 +219,7 @@ impl StreamContract {
     /// Accrued but unwithdrawn for the recipient; refundable remainder for the
     /// sender; zero for anyone else.
     pub fn balance_of(env: Env, who: Address) -> Result<i128, Error> {
-        let stream = storage::load(&env)?;
+        let stream = storage::load_view(&env)?;
         let now = env.ledger().timestamp();
 
         if who == stream.recipient {
@@ -234,12 +234,19 @@ impl StreamContract {
 
     /// What the contract still holds for this stream.
     pub fn remaining(env: Env) -> Result<i128, Error> {
-        storage::load(&env)?.remaining()
+        storage::load_view(&env)?.remaining()
+    }
+
+    /// Extends the instance TTL for a long-lived stream without changing it.
+    pub fn bump(env: Env) -> Result<(), Error> {
+        storage::load_view(&env)?;
+        sororail_common::storage::extend_instance(&env);
+        Ok(())
     }
 
     /// The full stream record.
     pub fn get(env: Env) -> Result<Stream, Error> {
-        storage::load(&env)
+        storage::load_view(&env)
     }
 }
 

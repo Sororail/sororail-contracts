@@ -14,7 +14,7 @@ pub fn is_initialized(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Auth)
 }
 
-/// Loads the authorization, extending the instance TTL on the way through.
+/// Loads the authorization for a mutating operation and extends the instance TTL.
 pub fn load(env: &Env) -> Result<Authorization, Error> {
     let auth = env
         .storage()
@@ -23,6 +23,14 @@ pub fn load(env: &Env) -> Result<Authorization, Error> {
         .ok_or(Error::NotInitialized)?;
     ttl::extend_instance(env);
     Ok(auth)
+}
+
+/// Loads the authorization without changing ledger state.
+pub fn load_view(env: &Env) -> Result<Authorization, Error> {
+    env.storage()
+        .instance()
+        .get(&DataKey::Auth)
+        .ok_or(Error::NotInitialized)
 }
 
 /// Persists the authorization and extends the instance TTL.

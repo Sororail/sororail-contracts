@@ -14,7 +14,7 @@ pub fn is_initialized(env: &Env) -> bool {
     env.storage().instance().has(&DataKey::Grant)
 }
 
-/// Loads the grant, extending the instance TTL on the way through.
+/// Loads the grant for a mutating operation and extends the instance TTL.
 pub fn load(env: &Env) -> Result<Grant, Error> {
     let grant = env
         .storage()
@@ -23,6 +23,14 @@ pub fn load(env: &Env) -> Result<Grant, Error> {
         .ok_or(Error::NotInitialized)?;
     ttl::extend_instance(env);
     Ok(grant)
+}
+
+/// Loads the grant without changing ledger state.
+pub fn load_view(env: &Env) -> Result<Grant, Error> {
+    env.storage()
+        .instance()
+        .get(&DataKey::Grant)
+        .ok_or(Error::NotInitialized)
 }
 
 /// Persists the grant and extends the instance TTL.

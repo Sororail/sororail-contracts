@@ -219,12 +219,19 @@ impl EscrowContract {
 
     /// The current lifecycle position.
     pub fn state(env: Env) -> Result<State, Error> {
-        Ok(storage::load(&env)?.state)
+        Ok(storage::load_view(&env)?.state)
+    }
+
+    /// Extends the instance TTL for a long-lived escrow without changing it.
+    pub fn bump(env: Env) -> Result<(), Error> {
+        storage::load_view(&env)?;
+        sororail_common::storage::extend_instance(&env);
+        Ok(())
     }
 
     /// The full agreement.
     pub fn get(env: Env) -> Result<Escrow, Error> {
-        storage::load(&env)
+        storage::load_view(&env)
     }
 }
 

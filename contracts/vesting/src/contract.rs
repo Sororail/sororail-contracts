@@ -165,23 +165,30 @@ impl VestingContract {
 
     /// Total vested as of `at`, whether claimed or not. Pure view.
     pub fn vested_amount(env: Env, at: u64) -> Result<i128, Error> {
-        storage::load(&env)?.vested_amount(at)
+        storage::load_view(&env)?.vested_amount(at)
     }
 
     /// Vested but not yet claimed, as of now.
     pub fn claimable(env: Env) -> Result<i128, Error> {
-        let grant = storage::load(&env)?;
+        let grant = storage::load_view(&env)?;
         grant.claimable_at(env.ledger().timestamp())
     }
 
     /// What the contract still holds for this grant.
     pub fn remaining(env: Env) -> Result<i128, Error> {
-        storage::load(&env)?.remaining()
+        storage::load_view(&env)?.remaining()
+    }
+
+    /// Extends the instance TTL for a long-lived grant without changing it.
+    pub fn bump(env: Env) -> Result<(), Error> {
+        storage::load_view(&env)?;
+        sororail_common::storage::extend_instance(&env);
+        Ok(())
     }
 
     /// The full grant record.
     pub fn get(env: Env) -> Result<Grant, Error> {
-        storage::load(&env)
+        storage::load_view(&env)
     }
 }
 
