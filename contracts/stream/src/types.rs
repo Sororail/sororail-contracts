@@ -81,6 +81,10 @@ impl Stream {
     }
 
     /// Whether the stream has been cancelled.
+    ///
+    /// The lifecycle is binary and one-way, so it is modelled by the
+    /// `cancelled_at` timestamp (which accrual needs anyway) rather than a
+    /// `State` enum like escrow's. See "Lifecycle modeling" in SPEC.md.
     pub fn is_cancelled(&self) -> bool {
         self.cancelled_at.is_some()
     }
