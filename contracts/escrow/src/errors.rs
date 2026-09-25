@@ -18,7 +18,7 @@
 //! | [`Error::InvalidTimeRange`] | `init` with a deadline at or before now |
 //! | [`Error::InvalidBasisPoints`] | `resolve` with `split_bps > 10000` |
 //! | [`Error::Overflow`] | `resolve` on an amount too large to scale by `split_bps` in `i128` |
-//! | [`Error::DeadlineNotReached`] | depositor `refund` before the deadline; any non-arbiter `refund` of a dispute still inside its grace period |
+//! | [`Error::DeadlineNotReached`] | depositor `refund` before the deadline; `refund` of a disputed escrow still inside its grace period |
 //! | [`Error::DeadlinePassed`] | `fund` at or after the deadline |
 //! | [`Error::EscrowNotFundable`] | `fund` when not in `Created` |
 //! | [`Error::EscrowNotFunded`] | `release`/`refund`/`dispute` when not in `Funded` |
