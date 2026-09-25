@@ -49,7 +49,7 @@ impl StreamContract {
         if stop <= start {
             return Err(Error::InvalidTimeRange);
         }
-        let deposited = math::mul(rate_per_second, math::sub(stop as i128, start as i128)?)?;
+        let deposited = math::mul(rate_per_second, math::sub(i128::from(stop), i128::from(start))?)?;
 
         sender.require_auth();
 
@@ -199,7 +199,7 @@ impl StreamContract {
 
         let added = math::mul(
             stream.rate_per_second,
-            math::sub(new_stop as i128, stream.stop as i128)?,
+            math::sub(i128::from(new_stop), i128::from(stream.stop))?,
         )?;
         stream.stop = new_stop;
         stream.deposited = math::add(stream.deposited, added)?;

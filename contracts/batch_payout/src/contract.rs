@@ -78,7 +78,7 @@ impl BatchPayoutContract {
             }
         }
 
-        let total = math::mul(amount_each, count as i128)?;
+        let total = math::mul(amount_each, i128::from(count))?;
 
         funder.require_auth();
 
