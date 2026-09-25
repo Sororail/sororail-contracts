@@ -131,14 +131,47 @@ impl EscrowContract {
     /// Returns the funds to the depositor.
     ///
     /// The depositor may do this only once the deadline has passed. The
-    /// arbiter may do it at any time.
+    /// arbiter may do it at any time. If a dispute is unresolved after the
+    /// dispute grace period expires (7 days past the original deadline), anyone
+    /// may refund to recover funds from an unresponsive arbiter.
+    ///
+    /// # Dispute recovery
+    ///
+    /// Once the deadline passes, an unresolved dispute becomes a safety
+    /// mechanism: if the arbiter is unresponsive, either party (or anyone) may
+    /// call `refund` after the grace period expires to recover the deposited
+    /// funds to the original depositor.
     pub fn refund(env: Env, caller: Address) -> Result<(), Error> {
         let mut escrow = storage::load(&env)?;
+        let now = env.ledger().timestamp();
+        const DISPUTE_GRACE_PERIOD_SECONDS: u64 = 7 * 24 * 60 * 60; // 7 days
+
+        // If disputed and past the grace period, allow recovery by anyone.
+        if escrow.state == State::Disputed {
+            let dispute_timeout = escrow.deadline.saturating_add(DISPUTE_GRACE_PERIOD_SECONDS);
+            if now >= dispute_timeout {
+                escrow.state = State::Refunded;
+                storage::save(&env, &escrow);
+                Self::pay(&env, &escrow, &escrow.depositor, escrow.amount);
+                events::Refunded {
+                    depositor: escrow.depositor.clone(),
+                    amount: escrow.amount,
+                    refunded_by: caller,
+                }
+                .publish(&env);
+                return Ok(());
+            }
+            // If disputed but within the grace period, require arbiter permission.
+            auth::require_auth_either_opt(&caller, &escrow.depositor, &escrow.arbiter)?;
+            return Err(Error::DeadlineNotReached);
+        }
+
+        // For Funded state, use the original refund logic.
         Self::require_funded(&escrow)?;
         auth::require_auth_either_opt(&caller, &escrow.depositor, &escrow.arbiter)?;
 
         let is_arbiter = escrow.arbiter.as_ref().is_some_and(|a| *a == caller);
-        if !is_arbiter && env.ledger().timestamp() < escrow.deadline {
+        if !is_arbiter && now < escrow.deadline {
             return Err(Error::DeadlineNotReached);
         }
 

@@ -35,6 +35,25 @@ Out of scope: findings that require a compromised wallet or leaked key,
 issues in the Stellar network or `soroban-sdk` itself (report those upstream),
 and anything that depends on deploying to mainnet, which we ask you not to do.
 
+## Known limitations and design decisions
+
+### Escrow dispute timeout
+
+The `escrow` contract requires an arbiter to resolve disputed escrows by calling
+`resolve()`. If the arbiter's key is lost or they become unresponsive, funds
+would otherwise be locked permanently in the `Disputed` state. To mitigate this:
+
+- Once the original `deadline` passes, a 7-day grace period begins.
+- If a dispute remains unresolved after this grace period, **anyone** may call
+  `refund()` to return the full amount to the original depositor, recovering
+  funds from an unresponsive arbiter.
+- This design prioritizes recovery over absolute arbiter authority. An arbiter
+  who cares about their role should resolve disputes well before the deadline.
+
+Integrators relying on escrow should document this assumption: arbiters are
+trusted to respond within 7 days of the original deadline, or funds become
+recoverable by the depositor unilaterally.
+
 ## Automated checks
 
 CI runs `cargo audit` on every pull request. Adding CoinFabrik's Scout, an

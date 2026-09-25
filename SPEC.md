@@ -142,9 +142,10 @@ Funds held by the contract, released on a condition.
 - `init(depositor, beneficiary, arbiter: Option<Address>, token, amount, deadline)`
 - `fund()` — pulls tokens from depositor
 - `release(caller)` — beneficiary receives; callable by depositor or arbiter
-- `refund(caller)` — callable by depositor after deadline, or by arbiter at any time
+- `refund(caller)` — callable by depositor after deadline, or by arbiter at any time. If in `Disputed` state, callable by anyone after 7 days past the original deadline to recover from an unresponsive arbiter.
 - `dispute(caller)` / `resolve(split_bps)` — arbiter splits between parties; `split_bps` is the beneficiary's share
 - States: `Created → Funded → (Released | Refunded | Disputed → Resolved)`. Illegal transitions must error, not panic.
+- **Dispute timeout:** Once the deadline passes, an unresolved dispute has a 7-day grace period. After this period, either party (or anyone) may refund to recover funds from an unresponsive arbiter. This is a safety mechanism, not a normal flow.
 
 #### `stream`
 
