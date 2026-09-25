@@ -11,6 +11,7 @@ rust-version.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 doctest = false
+build = "build.rs"
 
 [dependencies]
 soroban-sdk = { workspace = true }
