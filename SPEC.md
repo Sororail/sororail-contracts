@@ -204,7 +204,9 @@ Non-negotiable, and the main thing that makes this credible as a dependency:
 - Arithmetic edge cases: zero amounts, `i128::MAX`, one-second durations, cliff equal to duration, stop before start.
 - Conservation invariants for `stream` and `vesting`, as described above.
 - Integration tests in `/tests` that deploy real token contracts and exercise full lifecycles.
-- Target ≥90% line coverage, enforced in CI.
+- Target ≥90% line coverage, enforced in CI, with additional region (≥75%) and
+  function (≥80%) floors so error-path branches cannot hide behind high line
+  counts. CI also audits that every `Error::*` variant is named in the test corpus.
 
 ### Cross-contract design conventions
 

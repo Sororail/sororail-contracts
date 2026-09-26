@@ -3,7 +3,7 @@
 #![allow(clippy::arithmetic_side_effects)]
 
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _, Storage as _},
+    testutils::{storage::Instance as _, Address as _, Events as _, Ledger as _},
     token::TokenClient,
     Address, Env,
 };
@@ -18,7 +18,9 @@ use crate::{
 #[test]
 fn bump_restores_the_instance_ttl_after_ledger_advance() {
     let f = Fixture::new();
-    f.env.ledger().set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
+    f.env
+        .ledger()
+        .set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
     assert!(f.env.storage().instance().get_ttl() < INSTANCE_BUMP);
     f.client.bump();
     assert_eq!(f.env.storage().instance().get_ttl(), INSTANCE_BUMP);
@@ -425,7 +427,10 @@ fn create_with_contract_as_beneficiary_succeeds() {
         &DURATION,
         &true,
     );
-    assert!(result.is_ok(), "create with contract as beneficiary should succeed");
+    assert!(
+        result.is_ok(),
+        "create with contract as beneficiary should succeed"
+    );
 }
 
 #[test]
@@ -440,9 +445,27 @@ fn create_rejects_multiple_invalid_args_in_order() {
     let client = VestingContractClient::new(&env, &contract_id);
 
     // AlreadyInitialized comes before InvalidAmount
-    client.create(&grantor, &beneficiary, &token, &TOTAL, &START, &CLIFF, &DURATION, &true);
+    client.create(
+        &grantor,
+        &beneficiary,
+        &token,
+        &TOTAL,
+        &START,
+        &CLIFF,
+        &DURATION,
+        &true,
+    );
     assert_eq!(
-        client.try_create(&grantor, &beneficiary, &token, &0, &START, &CLIFF, &DURATION, &true),
+        client.try_create(
+            &grantor,
+            &beneficiary,
+            &token,
+            &0,
+            &START,
+            &CLIFF,
+            &DURATION,
+            &true
+        ),
         Err(Ok(Error::AlreadyInitialized))
     );
 
@@ -450,7 +473,16 @@ fn create_rejects_multiple_invalid_args_in_order() {
     let contract_id2 = env.register(VestingContract, ());
     let client2 = VestingContractClient::new(&env, &contract_id2);
     assert_eq!(
-        client2.try_create(&grantor, &beneficiary, &token, &0, &START, &CLIFF, &0, &true),
+        client2.try_create(
+            &grantor,
+            &beneficiary,
+            &token,
+            &0,
+            &START,
+            &CLIFF,
+            &0,
+            &true
+        ),
         Err(Ok(Error::InvalidAmount))
     );
 
@@ -458,7 +490,16 @@ fn create_rejects_multiple_invalid_args_in_order() {
     let contract_id3 = env.register(VestingContract, ());
     let client3 = VestingContractClient::new(&env, &contract_id3);
     assert_eq!(
-        client3.try_create(&grantor, &beneficiary, &token, &TOTAL, &START, &CLIFF, &0, &true),
+        client3.try_create(
+            &grantor,
+            &beneficiary,
+            &token,
+            &TOTAL,
+            &START,
+            &CLIFF,
+            &0,
+            &true
+        ),
         Err(Ok(Error::InvalidDuration))
     );
 }
@@ -882,7 +923,10 @@ fn vesting_with_long_duration_and_large_total_probes_overflow_boundary() {
     // At the midpoint (half elapsed), vesting should succeed.
     let half_elapsed = TEN_YEARS_SECONDS / 2;
     let vested_halfway = g_safe.vested_amount(START + half_elapsed);
-    assert!(vested_halfway.is_ok(), "safe total should not overflow at midpoint");
+    assert!(
+        vested_halfway.is_ok(),
+        "safe total should not overflow at midpoint"
+    );
     // At full duration, should have vested the full amount.
     assert_eq!(
         g_safe.vested_amount(START + TEN_YEARS_SECONDS),

@@ -187,7 +187,10 @@ fn every_contract_crate_declares_at_least_one_event() {
         .map(|(name, _)| name)
         .collect();
 
-    assert!(silent.is_empty(), "no #[contractevent] found in: {silent:?}");
+    assert!(
+        silent.is_empty(),
+        "no #[contractevent] found in: {silent:?}"
+    );
 }
 
 #[test]

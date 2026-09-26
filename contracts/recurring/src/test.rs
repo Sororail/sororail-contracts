@@ -3,7 +3,7 @@
 #![allow(clippy::arithmetic_side_effects)]
 
 use soroban_sdk::{
-    testutils::{Address as _, Events as _, Ledger as _, Storage as _},
+    testutils::{storage::Instance as _, Address as _, Events as _, Ledger as _},
     token::{StellarAssetClient, TokenClient},
     Address, Env, Event,
 };
@@ -17,7 +17,9 @@ use crate::{
 #[test]
 fn bump_restores_the_instance_ttl_after_ledger_advance() {
     let f = Fixture::new();
-    f.env.ledger().set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
+    f.env
+        .ledger()
+        .set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
     assert!(f.env.storage().instance().get_ttl() < INSTANCE_BUMP);
     f.client.bump();
     assert_eq!(f.env.storage().instance().get_ttl(), INSTANCE_BUMP);
@@ -181,14 +183,7 @@ fn authorize_rejects_multiple_invalid_args_in_order() {
     let contract_id = env.register(RecurringContract, ());
     let client = RecurringContractClient::new(&env, &contract_id);
     assert_eq!(
-        client.try_authorize(
-            &f.payer,
-            &f.payee,
-            &f.token.address,
-            &0,
-            &0,
-            &None
-        ),
+        client.try_authorize(&f.payer, &f.payee, &f.token.address, &0, &0, &None),
         Err(Ok(Error::InvalidAmount))
     );
 
@@ -218,7 +213,8 @@ fn authorize_rejects_multiple_invalid_args_in_order() {
         &None,
     );
     assert_eq!(
-        f.client.try_authorize(&f.payer, &f.payee, &f.token.address, &0, &PERIOD, &None),
+        f.client
+            .try_authorize(&f.payer, &f.payee, &f.token.address, &0, &PERIOD, &None),
         Err(Ok(Error::AlreadyInitialized))
     );
 }
@@ -436,7 +432,6 @@ fn charge_fails_when_allowance_covers_fewer_periods_than_remain() {
     assert_eq!(f.client.get().periods_charged, 2);
 }
 
-
 /// `charge` bumps `periods_charged` before `transfer_from`. A failed token
 /// call must roll that write back — `get()` still shows the pre-charge count.
 #[test]
@@ -492,7 +487,9 @@ fn charge_reverts_schedule_state_when_allowance_is_expired() {
     f.token
         .approve(&f.payer, &f.client.address, &MINT, &(current_seq + 1));
     // Advance the ledger past the allowance expiry.
-    f.env.ledger().with_mut(|l| l.sequence = current_seq + 100_000);
+    f.env
+        .ledger()
+        .with_mut(|l| l.sequence = current_seq + 100_000);
 
     f.at(START + PERIOD);
     assert!(f.client.try_charge().is_err());

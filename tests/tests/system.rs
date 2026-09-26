@@ -189,7 +189,7 @@ fn an_operations_month_conserves_every_token() {
     s.stream.withdraw(&None);
     s.assert_nothing_lost(&parties);
     assert_eq!(s.balance(&vendor), 99_000);
-    assert_eq!(s.balance(&dave), MONTH as i128);
+    assert_eq!(s.balance(&dave), i128::from(MONTH));
 
     // The grant is still inside its cliff.
     assert_eq!(s.vesting.claimable(), 0);
@@ -206,7 +206,7 @@ fn an_operations_month_conserves_every_token() {
     s.assert_nothing_lost(&parties);
 
     // The stream paid out its full year and no more.
-    assert_eq!(s.balance(&dave), YEAR as i128);
+    assert_eq!(s.balance(&dave), i128::from(YEAR));
     assert_eq!(s.stream.remaining(), 0);
 
     // --- the employee leaves; the unvested remainder comes back ---
@@ -287,10 +287,12 @@ fn cannot_cancel_non_cancellable_stream() {
 
     // Attempt to cancel the stream and assert the error
     let result = s.stream.try_cancel();
-    assert_eq!(result, Err(Ok(sororail_common::Error::StreamNotCancellable)));
+    assert_eq!(
+        result,
+        Err(Ok(sororail_common::Error::StreamNotCancellable))
+    );
     s.assert_nothing_lost(&parties);
 }
-
 
 /// Cancelling and revoking in the same window returns exactly the unearned
 /// portion of each, and nothing more.
@@ -409,7 +411,7 @@ fn a_full_size_batch_runs_within_a_populated_system() {
         assert_eq!(s.balance(&r), 100);
     }
 
-    let paid_out: i128 = 100 * sororail_batch_payout::MAX_RECIPIENTS as i128;
+    let paid_out: i128 = 100 * i128::from(sororail_batch_payout::MAX_RECIPIENTS);
     assert_eq!(s.balance(&s.employer), MINT - paid_out - 1_000);
 }
 
@@ -476,7 +478,8 @@ fn batch_and_recurring_payroll_workflow() {
             amount: 200_000,
         },
     ];
-    s.batch.execute(&s.employer, &s.token.address, &bonus_payroll);
+    s.batch
+        .execute(&s.employer, &s.token.address, &bonus_payroll);
     s.recurring.charge();
     assert_eq!(s.balance(&vendor), 200_000);
     s.assert_nothing_lost(&parties);
