@@ -132,7 +132,7 @@ fn min_picks_the_smaller() {
 
 #[test]
 fn bps_denominator_matches_max_bps() {
-    assert_eq!(BPS_DENOMINATOR, MAX_BPS as i128);
+    assert_eq!(BPS_DENOMINATOR, i128::from(MAX_BPS));
 }
 
 // ---------------------------------------------------------------- storage

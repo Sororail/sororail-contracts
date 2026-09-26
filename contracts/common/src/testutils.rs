@@ -93,12 +93,7 @@ impl TestEnv {
     /// Mints `amount` tokens of `token` to `recipient`.
     ///
     /// Useful when a test needs a single token but multiple funded accounts.
-    pub fn mint(
-        &self,
-        token: &soroban_sdk::Address,
-        recipient: &Address,
-        amount: i128,
-    ) {
+    pub fn mint(&self, token: &soroban_sdk::Address, recipient: &Address, amount: i128) {
         StellarAssetClient::new(&self.env, token).mint(recipient, &amount);
     }
 

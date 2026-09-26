@@ -132,7 +132,7 @@ Non-negotiable — this is what makes the contracts credible as a dependency:
   remaining always equals deposited, exactly, with no rounding leakage.
 - Integration tests in `tests/` deploying real token contracts over full
   lifecycles.
-- ≥90% line coverage, enforced in CI.
+- ≥90% line coverage plus region/function floors, enforced in CI.
 
 ## Status
 

@@ -1,5 +1,5 @@
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _, Storage as _},
+    testutils::{storage::Instance as _, Address as _, Events as _, Ledger as _},
     token::{StellarAssetClient, TokenClient},
     Address, Env,
 };
@@ -14,7 +14,9 @@ use crate::{
 #[test]
 fn bump_restores_the_instance_ttl_after_ledger_advance() {
     let f = Fixture::new(false);
-    f.env.ledger().set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
+    f.env
+        .ledger()
+        .set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
     assert!(f.env.storage().instance().get_ttl() < INSTANCE_BUMP);
     f.client.bump();
     assert_eq!(f.env.storage().instance().get_ttl(), INSTANCE_BUMP);
@@ -308,7 +310,6 @@ fn fund_rejects_a_second_call() {
     assert_eq!(f.client.try_fund(), Err(Ok(Error::EscrowNotFundable)));
 }
 
-
 /// `fund` writes `State::Funded` before the token pull. If the depositor cannot
 /// pay, the host reverts the invocation so a later `state()` is still `Created`.
 #[test]
@@ -338,7 +339,11 @@ fn fund_reverts_cleanly_when_depositor_cannot_pay() {
     assert_eq!(client.state(), State::Created);
 
     assert!(client.try_fund().is_err());
-    assert_eq!(client.state(), State::Created, "optimistic Funded write leaked");
+    assert_eq!(
+        client.state(),
+        State::Created,
+        "optimistic Funded write leaked"
+    );
     assert_eq!(token.balance(&client.address), 0);
     assert_eq!(client.get().amount, AMOUNT);
 }
@@ -717,7 +722,10 @@ fn init_with_beneficiary_as_contract_address_succeeds() {
         &AMOUNT,
         &DEADLINE,
     );
-    assert!(result.is_ok(), "init with contract as beneficiary should succeed");
+    assert!(
+        result.is_ok(),
+        "init with contract as beneficiary should succeed"
+    );
 }
 
 #[test]
@@ -745,7 +753,10 @@ fn init_with_depositor_as_contract_address_succeeds() {
         &AMOUNT,
         &DEADLINE,
     );
-    assert!(result.is_ok(), "init with contract as depositor should succeed");
+    assert!(
+        result.is_ok(),
+        "init with contract as depositor should succeed"
+    );
 }
 
 #[test]
@@ -765,9 +776,23 @@ fn init_rejects_multiple_invalid_args_in_order() {
     let client = EscrowContractClient::new(&env, &contract_id);
 
     // Both AlreadyInitialized AND InvalidAmount: AlreadyInitialized comes first
-    client.init(&depositor, &beneficiary, &None, &token_address, &AMOUNT, &DEADLINE);
+    client.init(
+        &depositor,
+        &beneficiary,
+        &None,
+        &token_address,
+        &AMOUNT,
+        &DEADLINE,
+    );
     assert_eq!(
-        client.try_init(&depositor, &beneficiary, &None, &token_address, &0, &DEADLINE),
+        client.try_init(
+            &depositor,
+            &beneficiary,
+            &None,
+            &token_address,
+            &0,
+            &DEADLINE
+        ),
         Err(Ok(Error::AlreadyInitialized))
     );
 

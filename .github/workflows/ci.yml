@@ -38,9 +38,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+      # Install the channel from rust-toolchain.toml (1.97.1), not floating
+      # `dtolnay/rust-toolchain@stable`. Spec/CONTRIBUTING pin that file as
+      # source of truth so local cargo and CI cannot diverge on clippy or
+      # inference (issue #53).
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
+          toolchain: "1.97.1"
           components: rustfmt, clippy
+      - name: verify rustc matches rust-toolchain.toml
+        run: |
+          expected="$(sed -n 's/^channel *= *"\(.*\)".*/\1/p' rust-toolchain.toml)"
+          actual="$(rustc -V | awk '{print $2}')"
+          echo "rust-toolchain.toml channel=${expected}"
+          echo "rustc --version patch=${actual}"
+          test "${actual}" = "${expected}"
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       - uses: taiki-e/install-action@4765db214858792ed289a2b5e543daf93d682a48 # nextest
 
@@ -53,7 +65,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+        with:
+          toolchain: "1.97.1"
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       - run: cargo doc --no-deps --workspace
         env:
@@ -64,8 +78,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
+          toolchain: "1.97.1"
           targets: wasm32v1-none
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       # sororail-integration-tests is host-only (needs std); it is excluded
@@ -160,19 +175,31 @@ jobs:
       - run: cargo check --workspace --exclude sororail-integration-tests --target wasm32v1-none --locked
 
   coverage:
-    name: coverage (>=90%)
+    name: coverage (lines≥90, regions≥75, functions≥80)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # stable
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
-          # Pinned to match rust-toolchain.toml so coverage numbers cannot
-          # drift when stable moves. Keep in sync by hand.
-          toolchain: 1.97.1
+          # Must match rust-toolchain.toml (issue #53).
+          toolchain: "1.97.1"
+      - name: verify rustc matches rust-toolchain.toml
+        run: |
+          expected="$(sed -n 's/^channel *= *"\(.*\)".*/\1/p' rust-toolchain.toml)"
+          actual="$(rustc -V | awk '{print $2}')"
+          test "${actual}" = "${expected}"
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
       - uses: taiki-e/install-action@ab4220e067fa624f7930084426dbfb7440a52829 # cargo-llvm-cov
       - uses: taiki-e/install-action@4765db214858792ed289a2b5e543daf93d682a48 # nextest
-      - run: cargo llvm-cov nextest --workspace --fail-under-lines 90
+      # Line coverage alone can miss error-path branches (issue #52). Gate
+      # regions and functions as well; keep line threshold at SPEC.md's 90%.
+      - run: >
+          cargo llvm-cov nextest --workspace
+          --fail-under-lines 90
+          --fail-under-regions 75
+          --fail-under-functions 80
+      - name: audit Error::* variants are referenced in tests
+        run: bash scripts/audit-error-variant-coverage.sh
 
   audit:
     name: cargo audit

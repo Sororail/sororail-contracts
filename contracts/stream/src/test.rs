@@ -4,7 +4,7 @@
 
 use soroban_sdk::{
     map,
-    testutils::{Address as _, Events as _, Ledger as _, Storage as _},
+    testutils::{storage::Instance as _, Address as _, Events as _, Ledger as _},
     token::TokenClient,
     vec, Address, Env, IntoVal, Symbol, Val,
 };
@@ -19,7 +19,9 @@ use crate::{
 #[test]
 fn bump_restores_the_instance_ttl_after_ledger_advance() {
     let f = Fixture::new();
-    f.env.ledger().set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
+    f.env
+        .ledger()
+        .set_sequence_number(f.env.ledger().sequence() + INSTANCE_BUMP - 1);
     assert!(f.env.storage().instance().get_ttl() < INSTANCE_BUMP);
     f.client.bump();
     assert_eq!(f.env.storage().instance().get_ttl(), INSTANCE_BUMP);
@@ -397,7 +399,10 @@ fn create_with_contract_as_recipient_succeeds() {
     StellarAssetClient::new(&env, &token).mint(&sender, &(RATE * 1000));
 
     let result = client.try_create(&sender, &contract_id, &token, &RATE, &START, &STOP, &true);
-    assert!(result.is_ok(), "create with contract as recipient should succeed");
+    assert!(
+        result.is_ok(),
+        "create with contract as recipient should succeed"
+    );
 }
 
 #[test]
