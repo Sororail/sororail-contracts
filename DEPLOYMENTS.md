@@ -1,5 +1,27 @@
 # Deployments
 
+## crates.io publication
+
+[SPEC.md](SPEC.md#the-contracts) says to reserve all six crate names on
+crates.io "early." Checked directly against the crates.io API on 2026-09-26 —
+none of the six are registered yet:
+
+| Crate                    | Reserved on crates.io? |
+| ------------------------ | ----------------------- |
+| `sororail-common`        | Not yet                 |
+| `sororail-escrow`        | Not yet                 |
+| `sororail-stream`        | Not yet                 |
+| `sororail-vesting`       | Not yet                 |
+| `sororail-recurring`     | Not yet                 |
+| `sororail-batch-payout`  | Not yet                 |
+
+> **To verify**: `curl -s https://crates.io/api/v1/crates/<name>` (with a
+> descriptive `User-Agent` header, per crates.io's API policy) returns 404 for
+> an unregistered name and 200 with crate metadata once it exists. Update this
+> table — and check off the corresponding line in the README's Status
+> section — the day any of these six is actually published, even as an empty
+> placeholder release.
+
 ## Stellar testnet
 
 Deployed 2026-09-07 from commit
