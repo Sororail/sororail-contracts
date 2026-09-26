@@ -53,7 +53,7 @@ jobs:
           echo "rust-toolchain.toml channel=${expected}"
           echo "rustc --version patch=${actual}"
           test "${actual}" = "${expected}"
-      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: taiki-e/install-action@4765db214858792ed289a2b5e543daf93d682a48 # nextest
 
       - run: cargo fmt --all -- --check
@@ -68,7 +68,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
         with:
           toolchain: "1.97.1"
-      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo doc --no-deps --workspace
         env:
           RUSTDOCFLAGS: "-D warnings"
@@ -82,7 +82,7 @@ jobs:
         with:
           toolchain: "1.97.1"
           targets: wasm32v1-none
-      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       # sororail-integration-tests is host-only (needs std); it is excluded
       # here rather than being allowed to fail the wasm build.
       - run: cargo build --workspace --exclude sororail-integration-tests --target wasm32v1-none --release
@@ -170,7 +170,7 @@ jobs:
           # Must equal rust-version in Cargo.toml.
           toolchain: "1.91"
           targets: wasm32v1-none
-      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo check --workspace --all-targets --locked
       - run: cargo check --workspace --exclude sororail-integration-tests --target wasm32v1-none --locked
 
@@ -188,7 +188,7 @@ jobs:
           expected="$(sed -n 's/^channel *= *"\(.*\)".*/\1/p' rust-toolchain.toml)"
           actual="$(rustc -V | awk '{print $2}')"
           test "${actual}" = "${expected}"
-      - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: taiki-e/install-action@ab4220e067fa624f7930084426dbfb7440a52829 # cargo-llvm-cov
       - uses: taiki-e/install-action@4765db214858792ed289a2b5e543daf93d682a48 # nextest
       # Line coverage alone can miss error-path branches (issue #52). Gate
