@@ -148,6 +148,8 @@ Non-negotiable — this is what makes the contracts credible as a dependency:
 - [x] Coverage measured: 98.66% lines, against the ≥90% gate
 - [x] Testnet deployment, addresses recorded in [DEPLOYMENTS.md](DEPLOYMENTS.md)
 - [ ] `MAX_RECIPIENTS` re-measured against testnet (see below)
+- [ ] Crate names reserved on crates.io — tracked per-crate in
+      [DEPLOYMENTS.md](DEPLOYMENTS.md#cratesio-publication)
 
 ### Known gaps
 
