@@ -21,7 +21,7 @@ jobs:
           toolchain: "1.97.1"
           targets: wasm32v1-none
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
-      - uses: stellar/stellar-cli@8e402ea28202950b272fbabc34caad4d2f64fe87 # v27.1.0
+      - uses: stellar/stellar-cli@300aaf69ab100536678bdb641428b06f06b318ea # v28.0.0
 
       - name: Build WASM contracts
         run: cargo build --workspace --exclude sororail-integration-tests --target wasm32v1-none --release
