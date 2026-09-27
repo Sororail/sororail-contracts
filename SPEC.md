@@ -181,6 +181,7 @@ Pull-based authorization for subscriptions. The payer authorizes a cap and caden
 - `cancel(caller)` — callable by either party, effective immediately
 - `next_chargeable_at()` — view
 - Must not accrue chargeable periods retroactively when a payee skips one. A payee who forgets to charge for three months cannot then charge three times. This is a deliberate consumer-protection choice; document it prominently.
+- Consequence for automated payees: whoever drives `charge` on a schedule (for example the scheduled recurring runs in [`apps/web`'s Payroll feature](#appsweb)) gets no catch-up after downtime, a failed cron, or a skipped job. The next successful `charge` collects exactly one period however many have elapsed, and every other elapsed period is forfeited. A late charge also restarts the cadence from the moment it lands (`next_chargeable_at = now + period_seconds`), so repeated lateness drifts the schedule. The rationale is documented on `recurring::Authorization`.
 - The pull works through the token's allowance: the payer `approve`s this contract as spender and `charge` uses `transfer_from`. The contract holds no funds, and revoking the allowance stops charges without touching the contract.
 
 #### `batch_payout`
@@ -319,7 +320,7 @@ A real application, not a demo page — but its purpose is demonstrative, so fav
 **Features**
 
 - _Wallet and account_ — connect via Freighter, network detection with a hard warning on mismatch, testnet faucet link and a clear testnet-only banner.
-- _Payroll_ (`batch_payout` + `recurring`) — recipient list with CSV import, preview of total and per-recipient amounts and estimated fees before signing, batch execution with per-recipient confirmation, scheduled recurring runs. Duplicate detection belongs here, in the CSV import — the contract deliberately allows duplicates.
+- _Payroll_ (`batch_payout` + `recurring`) — recipient list with CSV import, preview of total and per-recipient amounts and estimated fees before signing, batch execution with per-recipient confirmation, scheduled recurring runs. The scheduler must treat a missed run as lost, not deferred: `recurring` never accrues periods retroactively, so if downtime or a failed cron lets more than one period elapse, the next `charge` collects only one of them and the rest are permanently forfeited (see [`recurring`](#recurring)). The scheduler cannot catch up by charging repeatedly, so it should surface missed runs to the operator instead. Duplicate detection belongs here, in the CSV import — the contract deliberately allows duplicates.
 - _Streams_ (`stream`) — create with a live preview of the accrual curve, dashboard of incoming and outgoing streams with balances ticking in real time, withdraw / top up / extend / cancel.
 - _Vesting_ (`vesting`) — create a grant with a visual schedule showing cliff and linear ramp, beneficiary view with claimable amount and next unlock, revoke for revocable grants.
 - _Escrow_ (`escrow`) — create, fund, release, refund, optional arbiter with dispute and split-resolution flow.
