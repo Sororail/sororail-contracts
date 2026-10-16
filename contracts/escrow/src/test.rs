@@ -364,6 +364,16 @@ fn fund_rejects_after_the_deadline() {
     assert_eq!(f.client.state(), State::Created);
 }
 
+#[test]
+fn state_is_terminal_for_each_lifecycle_variant() {
+    assert!(!State::Created.is_terminal());
+    assert!(!State::Funded.is_terminal());
+    assert!(State::Released.is_terminal());
+    assert!(State::Refunded.is_terminal());
+    assert!(!State::Disputed.is_terminal());
+    assert!(State::Resolved.is_terminal());
+}
+
 /// `fund` must reject at exactly the deadline timestamp (#102).
 ///
 /// Boundary: matches `refund_at_exactly_the_deadline_is_allowed` -- the

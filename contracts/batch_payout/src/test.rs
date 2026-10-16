@@ -4,13 +4,8 @@
 
 use soroban_sdk::{
     testutils::{Address as _, Events as _},
- test/consolidate-contract-helpers-and-stable-ids
-    token::TokenClient,
-    vec, Address, Env, Vec,
-
     token::{StellarAssetClient, TokenClient},
     vec, Address, Env, Event, Vec,
- main
 };
 use sororail_common::{testutils::TestEnv, Error};
 
@@ -116,6 +111,46 @@ fn execute_pays_each_recipient_their_own_amount() {
         total: 357,
     };
     assert_eq!(executed_event, &expected.to_xdr(&f.env, &f.client.address));
+}
+
+#[test]
+fn execute_emits_the_total_and_recipient_count() {
+    let f = Fixture::new();
+    let recipients = f.addresses(2);
+    let payments = vec![
+        &f.env,
+        Payment {
+            to: recipients.get(0).unwrap(),
+            amount: 125,
+        },
+        Payment {
+            to: recipients.get(1).unwrap(),
+            amount: 875,
+        },
+    ];
+
+    f.client.execute(&f.funder, &f.token.address, &payments);
+
+    let expected = Executed {
+        funder: f.funder,
+        token: f.token.address,
+        count: 2,
+        total: 1_000,
+    };
+    assert_eq!(
+        f.env.events().all().last().unwrap(),
+        expected.to_xdr(&f.env, &f.client.address)
+    );
+}
+
+#[test]
+fn execute_leaves_no_token_balance_on_the_contract() {
+    let f = Fixture::new();
+    let payments = f.payments(3, 37);
+
+    f.client.execute(&f.funder, &f.token.address, &payments);
+
+    assert_eq!(f.token.balance(&f.client.address), 0);
 }
 
 #[test]
@@ -343,6 +378,21 @@ fn execute_equal_pays_everyone_the_same() {
         assert_eq!(f.token.balance(&r), 200);
     }
     assert_eq!(f.token.balance(&f.funder), MINT - 1_000);
+}
+
+#[test]
+fn execute_equal_applies_the_exact_amount_without_rounding() {
+    let f = Fixture::new();
+    let recipients = f.addresses(3);
+
+    let receipt = f
+        .client
+        .execute_equal(&f.funder, &f.token.address, &recipients, &7);
+
+    assert_eq!(receipt, Receipt { count: 3, total: 21 });
+    for recipient in recipients.iter() {
+        assert_eq!(f.token.balance(&recipient), 7);
+    }
 }
 
 #[test]
