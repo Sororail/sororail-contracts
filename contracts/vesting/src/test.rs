@@ -553,6 +553,31 @@ fn create_rejects_a_second_call() {
     );
 }
 
+/// Issue #228: a second `create` is rejected with `AlreadyInitialized` and
+/// must leave the original grant untouched (no field is overwritten and the
+/// held balance is unchanged).
+#[test]
+fn second_create_is_rejected_and_leaves_the_grant_intact() {
+    let f = Fixture::new(true);
+    let before = f.client.get();
+    assert_eq!(
+        f.client.try_create(
+            &f.grantor,
+            &f.beneficiary,
+            &f.token.address,
+            &(TOTAL * 2),
+            &START,
+            &CLIFF,
+            &DURATION,
+            &false,
+        ),
+        Err(Ok(Error::AlreadyInitialized))
+    );
+    assert_eq!(f.client.get(), before);
+    assert_eq!(f.held(), TOTAL);
+    f.assert_conserved();
+}
+
 #[test]
 fn create_rejects_identical_grantor_and_beneficiary() {
     let env = Env::default();
@@ -783,6 +808,16 @@ fn entry_points_error_before_create() {
     assert_eq!(c.try_claimable(), Err(Ok(Error::NotInitialized)));
     assert_eq!(c.try_remaining(), Err(Ok(Error::NotInitialized)));
     assert_eq!(c.try_vested_amount(&START), Err(Ok(Error::NotInitialized)));
+}
+
+/// Issue #227: `get` on a contract that has not run `create` yet must return
+/// `NotInitialized` rather than panicking or returning a zeroed grant.
+#[test]
+fn get_errors_before_create() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = VestingContractClient::new(&env, &env.register(VestingContract, ()));
+    assert_eq!(c.try_get(), Err(Ok(Error::NotInitialized)));
 }
 
 #[test]

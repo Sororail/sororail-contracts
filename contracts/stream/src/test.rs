@@ -586,6 +586,25 @@ fn withdraw_none_takes_everything_available() {
     f.assert_conserved();
 }
 
+/// Issue #232: `withdraw(None)` with no unwithdrawn accrual left is rejected;
+/// the None path must not silently no-op.
+#[test]
+fn withdraw_none_drains_accrued_then_reports_nothing_left() {
+    let f = Fixture::new(true);
+    f.at(START + 250);
+    assert_eq!(f.client.withdraw(&None), RATE * 250);
+    assert_eq!(f.token.balance(&f.recipient), RATE * 250);
+    assert_eq!(f.client.balance_of(&f.recipient), 0);
+    assert_eq!(f.client.remaining(), DEPOSITED - RATE * 250);
+    f.assert_conserved();
+
+    // In the same instant nothing new accrued, so a second None has nothing
+    // to take and errors rather than transferring zero.
+    assert_eq!(f.client.try_withdraw(&None), Err(Ok(Error::InvalidAmount)));
+    assert_eq!(f.client.remaining(), DEPOSITED - RATE * 250);
+    f.assert_conserved();
+}
+
 #[test]
 fn withdraw_emits_the_withdrawn_event() {
     let f = Fixture::new(true);
@@ -707,6 +726,29 @@ fn cancel_settles_the_recipient_and_refunds_the_sender() {
     );
     assert_eq!(f.held(), 0);
     assert_eq!(f.client.remaining(), 0);
+    f.assert_conserved();
+}
+
+/// Issue #235: `cancel` splits the deposit exactly — the accrued portion is
+/// settled to the recipient and the unaccrued remainder is refunded to the
+/// sender, with the recorded totals matching the transfers.
+#[test]
+fn cancel_splits_accrued_to_recipient_and_unaccrued_to_sender() {
+    let f = Fixture::new(true);
+    let sender_before = f.token.balance(&f.sender);
+    f.at(START + 600);
+    f.client.cancel();
+
+    let accrued = RATE * 600;
+    let unaccrued = DEPOSITED - accrued;
+    assert_eq!(f.token.balance(&f.recipient), accrued);
+    assert_eq!(f.token.balance(&f.sender), sender_before + unaccrued);
+
+    let s = f.client.get();
+    assert_eq!(s.withdrawn, accrued);
+    assert_eq!(s.refunded, unaccrued);
+    assert_eq!(f.client.remaining(), 0);
+    assert_eq!(f.held(), 0);
     f.assert_conserved();
 }
 
