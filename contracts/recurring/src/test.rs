@@ -589,3 +589,35 @@ fn is_chargeable_tracks_the_schedule_and_the_cancellation() {
     f.client.cancel(&f.payer);
     assert!(!f.client.is_chargeable());
 }
+
+#[test]
+fn get_returns_the_full_authorization() {
+    let te = TestEnv::at(START);
+    let payer = te.make_address();
+    let payee = te.make_address();
+    let token_address = te.register_token();
+    let env = te.env().clone();
+
+    let client = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
+    let max_periods = Some(12);
+
+    client.authorize(
+        &payer,
+        &payee,
+        &token_address,
+        &AMOUNT,
+        &PERIOD,
+        &max_periods,
+    );
+
+    let authorization = client.get();
+    assert_eq!(authorization.payer, payer);
+    assert_eq!(authorization.payee, payee);
+    assert_eq!(authorization.token, token_address);
+    assert_eq!(authorization.amount_per_period, AMOUNT);
+    assert_eq!(authorization.period_seconds, PERIOD);
+    assert_eq!(authorization.max_periods, max_periods);
+    assert_eq!(authorization.periods_charged, 0);
+    assert_eq!(authorization.next_chargeable_at, START + PERIOD);
+    assert_eq!(authorization.cancelled, false);
+}
