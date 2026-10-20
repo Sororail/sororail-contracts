@@ -59,6 +59,7 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo nextest run --workspace
+      - run: make verify-deployments
       - run: ./scripts/check_error_docs.sh
       - run: ./scripts/check_deployments.sh
 

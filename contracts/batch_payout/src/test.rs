@@ -434,7 +434,13 @@ fn execute_equal_applies_the_exact_amount_without_rounding() {
         .client
         .execute_equal(&f.funder, &f.token.address, &recipients, &7);
 
-    assert_eq!(receipt, Receipt { count: 3, total: 21 });
+    assert_eq!(
+        receipt,
+        Receipt {
+            count: 3,
+            total: 21
+        }
+    );
     for recipient in recipients.iter() {
         assert_eq!(f.token.balance(&recipient), 7);
     }
