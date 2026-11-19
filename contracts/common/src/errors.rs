@@ -141,6 +141,8 @@ pub enum Error {
     VestingNothingToClaim = 65,
     /// `start + duration` would overflow `u64`.
     VestingScheduleOverflow = 66,
+    /// A schedule would report more checkpoints than the documented cap.
+    VestingTooManyCheckpoints = 67,
 
     // ----- recurring: 80–99 -----
     /// Reserved for the future id-keyed recurring design.

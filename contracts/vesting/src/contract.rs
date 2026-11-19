@@ -3,7 +3,7 @@ use sororail_common::{auth, math, Error};
 
 use crate::{
     events, storage,
-    types::{Checkpoint, Grant},
+    types::{Checkpoint, Grant, MAX_CHECKPOINTS},
 };
 
 #[contract]
@@ -84,6 +84,9 @@ impl VestingContract {
             returned: 0,
             revoked_at: None,
         };
+        if grant.checkpoint_count() > MAX_CHECKPOINTS {
+            return Err(Error::VestingTooManyCheckpoints);
+        }
         storage::save(&env, &grant);
 
         token::TokenClient::new(&env, &grant.token).transfer(
@@ -91,17 +94,19 @@ impl VestingContract {
             env.current_contract_address(),
             &total,
         );
-        events::Created {
-            grantor,
-            beneficiary,
-            token,
-            total,
-            start,
-            cliff,
-            duration,
-            revocable,
-        }
-        .publish(&env);
+        sororail_common::events::publish(
+            &env,
+            &events::Created {
+                grantor,
+                beneficiary,
+                token,
+                total,
+                start,
+                cliff,
+                duration,
+                revocable,
+            },
+        );
         Ok(())
     }
 
@@ -134,12 +139,14 @@ impl VestingContract {
         storage::save(&env, &grant);
 
         Self::pay(&env, &grant, &grant.beneficiary, claimable);
-        events::Claimed {
-            beneficiary: grant.beneficiary.clone(),
-            amount: claimable,
-            total_claimed: grant.claimed,
-        }
-        .publish(&env);
+        sororail_common::events::publish(
+            &env,
+            &events::Claimed {
+                beneficiary: grant.beneficiary.clone(),
+                amount: claimable,
+                total_claimed: grant.claimed,
+            },
+        );
         Ok(claimable)
     }
 
@@ -167,20 +174,23 @@ impl VestingContract {
         if unvested > 0 {
             Self::pay(&env, &grant, &grant.grantor, unvested);
         }
-        events::Revoked {
-            grantor: grant.grantor.clone(),
-            returned_to_grantor: unvested,
-            // `claimed` can never exceed `vested` here: `claim` adds exactly
-            // the positive `claimable_at = vested - claimed`, so it never
-            // overshoots the vested amount, and `vested_amount` is monotonic
-            // in time, so the `vested` computed at revocation is at least the
-            // `vested` that capped every earlier claim. The subtraction is
-            // therefore total -- `Underflow` is unreachable, which
-            // `revoke_succeeds_after_claiming_every_vested_token` pins down.
-            still_claimable: math::sub(vested, grant.claimed)?,
-            revoked_at: now,
-        }
-        .publish(&env);
+        sororail_common::events::publish(
+            &env,
+            &events::Revoked {
+                grantor: grant.grantor.clone(),
+                returned_to_grantor: unvested,
+                // `claimed` can never exceed `vested` here: `claim` adds
+                // exactly the positive `claimable_at = vested - claimed`, so
+                // it never overshoots the vested amount, and `vested_amount` is
+                // monotonic in time, so the `vested` computed at revocation is
+                // at least the `vested` that capped every earlier claim. The
+                // subtraction is therefore total -- `Underflow` is unreachable,
+                // which `revoke_succeeds_after_claiming_every_vested_token`
+                // pins down.
+                still_claimable: math::sub(vested, grant.claimed)?,
+                revoked_at: now,
+            },
+        );
         Ok(unvested)
     }
 

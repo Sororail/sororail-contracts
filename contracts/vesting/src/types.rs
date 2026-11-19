@@ -1,6 +1,15 @@
 use soroban_sdk::{contracttype, Address, Env, Vec};
 use sororail_common::{math, Error};
 
+/// Maximum number of corners a schedule may report.
+///
+/// The fixed start/cliff/end shape yields at most three checkpoints: `start`,
+/// `cliff`, and `end`, with coincident points collapsed. Capping the vector
+/// keeps `schedule` cheap to decode and guarantees the contract's return value
+/// cannot grow with the grant. A future schedule shape that needs more corners
+/// must raise this cap deliberately and add the matching boundary tests.
+pub const MAX_CHECKPOINTS: u32 = 3;
+
 /// One corner of the vesting schedule: the total vested at a moment.
 ///
 /// Returned by `schedule`. The planned amount, so it is unaffected by
@@ -145,20 +154,52 @@ impl Grant {
     /// as created, so a revoked grant still shows its full curve.
     ///
     /// Points that coincide are emitted once: `cliff == 0` drops the cliff
-    /// point, and `cliff == duration` drops the duplicate end point.
+    /// point, and `cliff == duration` drops the duplicate end point. At most
+    /// [`MAX_CHECKPOINTS`] are returned; a schedule that would need more is
+    /// rejected with [`Error::VestingTooManyCheckpoints`].
     pub fn checkpoints(&self, env: &Env) -> Result<Vec<Checkpoint>, Error> {
         let cliff_at = self.cliff_at();
         let end = self.end_at();
 
         let mut points = Vec::new(env);
-        points.push_back(self.checkpoint(self.start)?);
+        self.try_push_checkpoint(&mut points, self.start)?;
         if cliff_at > self.start {
-            points.push_back(self.checkpoint(cliff_at)?);
+            self.try_push_checkpoint(&mut points, cliff_at)?;
         }
         if end > cliff_at {
-            points.push_back(self.checkpoint(end)?);
+            self.try_push_checkpoint(&mut points, end)?;
         }
         Ok(points)
+    }
+
+    /// How many corners the planned schedule has, before building it.
+    ///
+    /// `create` uses this to reject an over-long schedule before persisting it.
+    pub(crate) fn checkpoint_count(&self) -> u32 {
+        let cliff_at = self.cliff_at();
+        let end = self.end_at();
+
+        let mut count = 1u32; // `start`
+        if cliff_at > self.start {
+            count = count.saturating_add(1);
+        }
+        if end > cliff_at {
+            count = count.saturating_add(1);
+        }
+        count
+    }
+
+    /// Appends one corner, enforcing [`MAX_CHECKPOINTS`].
+    pub(crate) fn try_push_checkpoint(
+        &self,
+        points: &mut Vec<Checkpoint>,
+        at: u64,
+    ) -> Result<(), Error> {
+        if points.len() >= MAX_CHECKPOINTS {
+            return Err(Error::VestingTooManyCheckpoints);
+        }
+        points.push_back(self.checkpoint(at)?);
+        Ok(())
     }
 
     fn checkpoint(&self, at: u64) -> Result<Checkpoint, Error> {

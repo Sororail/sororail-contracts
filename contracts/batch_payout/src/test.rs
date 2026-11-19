@@ -7,7 +7,10 @@ use soroban_sdk::{
     token::{StellarAssetClient, TokenClient},
     vec, Address, Env, Event, Vec,
 };
-use sororail_common::{testutils::TestEnv, Error};
+use sororail_common::{
+    testutils::{assert_conserved, TestEnv},
+    Error,
+};
 
 use crate::{
     contract::{BatchPayoutContract, BatchPayoutContractClient},
@@ -102,6 +105,17 @@ fn execute_pays_each_recipient_their_own_amount() {
     assert_eq!(f.token.balance(&f.funder), MINT - 357);
     // The contract is a conduit; it holds nothing.
     assert_eq!(f.token.balance(&f.client.address), 0);
+    assert_conserved(
+        &f.token,
+        &[
+            f.funder.clone(),
+            a.clone(),
+            b.clone(),
+            c.clone(),
+            f.client.address.clone(),
+        ],
+        MINT,
+    );
 
     // `execute` emits one token transfer per recipient before its own
     // `Executed`, so take the last event rather than assuming an index.
@@ -139,9 +153,10 @@ fn execute_emits_the_total_and_recipient_count() {
         count: 2,
         total: 1_000,
     };
+    let all = f.env.events().all();
     assert_eq!(
-        f.env.events().all().last().unwrap(),
-        expected.to_xdr(&f.env, &f.client.address)
+        all.events().last().unwrap(),
+        &expected.to_xdr(&f.env, &f.client.address)
     );
 }
 

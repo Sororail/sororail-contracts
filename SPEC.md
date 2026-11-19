@@ -172,7 +172,7 @@ Scheduled release against a schedule, with a cliff.
 - `claim()` — beneficiary withdraws vested-but-unclaimed
 - `revoke()` — grantor reclaims unvested; vested portion stays claimable
 - `vested_amount(at: u64)` — pure view, testable in isolation
-- `schedule()` — the schedule as a list of `Checkpoint { at, vested }` corners: start, cliff, and end (cliff and end collapse when they coincide). Linear between consecutive checkpoints. Reports the schedule as created, so it is unaffected by revocation.
+- `schedule()` — the schedule as a list of `Checkpoint { at, vested }` corners: start, cliff, and end (cliff and end collapse when they coincide). Linear between consecutive checkpoints. At most `MAX_CHECKPOINTS` (`3`) are returned; a schedule that would need more is rejected with `VestingTooManyCheckpoints`. Reports the schedule as created, so it is unaffected by revocation.
 - `create` rejects `grantor == beneficiary` with `IdenticalParties` before any funds move.
 - Linear vesting after cliff. Nothing claimable before cliff. Fully vested at `start + duration`.
 - `cliff` and `duration` are spans in seconds from `start`, not absolute timestamps. `cliff == duration` is a legal all-or-nothing unlock.

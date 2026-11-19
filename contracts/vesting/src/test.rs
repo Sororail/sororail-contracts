@@ -8,12 +8,16 @@ use soroban_sdk::{
     token::TokenClient,
     vec, Address, Env, Event, IntoVal, Symbol, Val,
 };
-use sororail_common::{storage::INSTANCE_BUMP, testutils::TestEnv, Error};
+use sororail_common::{
+    storage::INSTANCE_BUMP,
+    testutils::{assert_conserved, TestEnv},
+    Error,
+};
 
 use crate::{
     contract::{VestingContract, VestingContractClient},
     events::{Claimed, Revoked},
-    types::Grant,
+    types::{Grant, MAX_CHECKPOINTS},
 };
 
 #[test]
@@ -395,6 +399,34 @@ fn schedule_with_cliff_equal_to_duration_is_start_and_end() {
         checkpoints(&f),
         std::vec![(START, 0), (START + DURATION, TOTAL)]
     );
+}
+
+#[test]
+fn schedule_stops_at_the_checkpoint_cap() {
+    let f = Fixture::new(true);
+    assert_eq!(f.client.get().checkpoint_count(), MAX_CHECKPOINTS);
+    assert_eq!(f.client.schedule().len(), MAX_CHECKPOINTS);
+}
+
+#[test]
+fn checkpoint_capacity_rejects_one_past_the_cap() {
+    let env = Env::default();
+    let g = bare(&env, CLIFF, DURATION);
+    let mut points = soroban_sdk::Vec::new(&env);
+
+    // Fill the vector exactly to the cap; each push must succeed.
+    for n in 0..MAX_CHECKPOINTS {
+        g.try_push_checkpoint(&mut points, START + u64::from(n))
+            .expect("a checkpoint at the cap must be accepted");
+    }
+    assert_eq!(points.len(), MAX_CHECKPOINTS);
+
+    // Cap + 1 is rejected with the dedicated error and leaves the vector as is.
+    assert_eq!(
+        g.try_push_checkpoint(&mut points, START + DURATION),
+        Err(Error::VestingTooManyCheckpoints)
+    );
+    assert_eq!(points.len(), MAX_CHECKPOINTS);
 }
 
 #[test]
@@ -1215,9 +1247,14 @@ fn conservation_holds_across_claim_then_revoke_then_claim() {
     let g = f.client.get();
     assert_eq!(f.held(), 0);
     assert_eq!(g.claimed + g.returned, g.total);
-    assert_eq!(
-        f.token.balance(&f.beneficiary) + f.token.balance(&f.grantor),
-        MINT
+    assert_conserved(
+        &f.token,
+        &[
+            f.grantor.clone(),
+            f.beneficiary.clone(),
+            f.client.address.clone(),
+        ],
+        MINT,
     );
 }
 

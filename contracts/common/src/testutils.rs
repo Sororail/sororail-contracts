@@ -22,6 +22,10 @@
 //! Per-contract `Fixture` structs register their own contracts and drive the
 //! protocol — those stay in each test file because they are contract-specific.
 //! Only the plumbing that is literally identical across all of them lives here.
+//!
+//! [`assert_conserved`] is the workspace-wide token supply check: pass every
+//! address that may hold the token and the supply minted at the start, and it
+//! asserts no funds were created or destroyed.
 
 // Test fixtures do plain arithmetic on known-small constants; the checked-math
 // rule is for contract code.
@@ -124,4 +128,37 @@ impl Default for TestEnv {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Asserts that the token balances of `participants` sum to `expected_total`.
+///
+/// This is the whole-supply conservation check: list every address that can
+/// hold the token — both parties, any fee sink, and the contract itself when it
+/// can retain funds — and pass the supply minted at the start of the test. A
+/// flow that creates or destroys tokens will make the sum drift away from
+/// `expected_total` and fail here.
+///
+/// Balances are summed with checked arithmetic, so an over-large fixture cannot
+/// wrap the check and hide a leak.
+///
+/// # Panics
+///
+/// Panics when the balances do not sum to `expected_total`, naming the
+/// participants so a failing test points at the address that holds the wrong
+/// amount.
+///
+/// ```rust,ignore
+/// let (token, funder) = te.make_token(MINT);
+/// // ... run the flow ...
+/// assert_conserved(&token, &[recipient, sender, contract], MINT);
+/// ```
+pub fn assert_conserved(token: &TokenClient<'_>, participants: &[Address], expected_total: i128) {
+    let actual = participants.iter().fold(0i128, |sum, who| {
+        sum.checked_add(token.balance(who))
+            .expect("conservation sum overflowed i128")
+    });
+    assert_eq!(
+        actual, expected_total,
+        "token balances for {participants:?} do not sum to {expected_total}"
+    );
 }

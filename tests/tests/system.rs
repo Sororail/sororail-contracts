@@ -123,8 +123,14 @@ fn eighteen_decimal_token_lifecycles_conserve_value_across_every_contract() {
 
     let payroll = vec![
         &s.env,
-        Payment { to: alice.clone(), amount: ATOMIC_18 },
-        Payment { to: bob.clone(), amount: 2 * ATOMIC_18 },
+        Payment {
+            to: alice.clone(),
+            amount: ATOMIC_18,
+        },
+        Payment {
+            to: bob.clone(),
+            amount: 2 * ATOMIC_18,
+        },
     ];
     let receipt = s.batch.execute(&s.employer, &s.token.address, &payroll);
     assert_eq!(receipt.total, 3 * ATOMIC_18);

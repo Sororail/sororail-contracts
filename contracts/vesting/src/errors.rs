@@ -17,6 +17,8 @@
 //! | [`Error::VestingNothingToClaim`] | `claim` with nothing vested-but-unclaimed |
 //! | [`Error::VestingNotRevocable`] | `revoke` on a grant created with `revocable = false` |
 //! | [`Error::VestingRevoked`] | `revoke` on an already-revoked grant |
+//! | [`Error::VestingScheduleOverflow`] | `create` with a `start + duration` past `u64::MAX` |
+//! | [`Error::VestingTooManyCheckpoints`] | a schedule would exceed [`crate::types::MAX_CHECKPOINTS`] |
 //!
 //! # What is absent, and why
 //!
