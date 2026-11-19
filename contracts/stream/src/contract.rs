@@ -68,6 +68,8 @@ impl StreamContract {
             withdrawn: 0,
             refunded: 0,
             cancelled_at: None,
+            rate_per_second_scaled: None,
+            rate_scale: None,
         };
         storage::save(&env, &stream);
 
@@ -252,6 +254,20 @@ impl StreamContract {
     /// The full stream record.
     pub fn get(env: Env) -> Result<Stream, Error> {
         storage::load_view(&env)
+    }
+
+    /// Total accrued to the recipient so far.
+    /// Frozen at cancellation.
+    pub fn streamed_so_far(env: Env) -> Result<i128, Error> {
+        let stream = storage::load_view(&env)?;
+        stream.streamed_so_far(env.ledger().timestamp())
+    }
+
+    /// Seconds until the stream ends, clamped at zero.
+    /// Frozen at cancellation.
+    pub fn time_remaining(env: Env) -> Result<u64, Error> {
+        let stream = storage::load_view(&env)?;
+        Ok(stream.time_remaining(env.ledger().timestamp()))
     }
 }
 

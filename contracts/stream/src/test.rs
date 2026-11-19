@@ -119,6 +119,8 @@ fn bare(env: &Env) -> Stream {
         withdrawn: 0,
         refunded: 0,
         cancelled_at: None,
+        rate_per_second_scaled: None,
+        rate_scale: None,
     }
 }
 
@@ -1732,4 +1734,132 @@ mod conservation_properties {
             }
         }
     }
+}
+
+// ------------------------------------------------ scaled rate (sub-unit accrual)
+
+#[test]
+fn scaled_rate_accrues_sub_unit_amounts() {
+    let env = Env::default();
+    let mut s = bare(&env);
+    // Rate of 0.5 units per second: 500_000 / 1_000_000
+    s.rate_per_second_scaled = Some(500_000);
+    s.rate_scale = Some(1_000_000);
+    // Update deposited to reflect the new rate
+    s.deposited = 500_000; // 0.5 * 1000 seconds
+
+    // After 1 second: 500_000 / 1_000_000 = 0 (rounds toward zero)
+    assert_eq!(s.accrued_at(START + 1), Ok(0));
+
+    // After 2 seconds: 500_000 * 2 / 1_000_000 = 1
+    assert_eq!(s.accrued_at(START + 2), Ok(1));
+
+    // After 3 seconds: 500_000 * 3 / 1_000_000 = 1 (1500000 / 1000000)
+    assert_eq!(s.accrued_at(START + 3), Ok(1));
+
+    // After 4 seconds: 500_000 * 4 / 1_000_000 = 2 (2000000 / 1000000)
+    assert_eq!(s.accrued_at(START + 4), Ok(2));
+}
+
+#[test]
+fn scaled_rate_respects_deposited_cap() {
+    let env = Env::default();
+    let mut s = bare(&env);
+    // Tiny rate: 1 / 1_000_000 per second, but very long stream
+    s.rate_per_second_scaled = Some(1);
+    s.rate_scale = Some(1_000_000);
+    s.deposited = 100; // Only 100 units total
+
+    // After 1 million seconds: 1 * 1_000_000 / 1_000_000 = 1
+    assert_eq!(s.accrued_at(START + 1_000_000), Ok(1));
+
+    // Way past stop: should not exceed deposited
+    assert_eq!(s.accrued_at(STOP + 1_000_000), Ok(DEPOSITED));
+}
+
+#[test]
+fn scaled_rate_frozen_at_cancellation() {
+    let env = Env::default();
+    let mut s = bare(&env);
+    s.rate_per_second_scaled = Some(500_000);
+    s.rate_scale = Some(1_000_000);
+    let cancel_time = START + 5;
+    s.cancelled_at = Some(cancel_time);
+
+    let accrued_at_cancel = s.accrued_at(cancel_time).unwrap();
+    // Further into the future should be the same
+    assert_eq!(s.accrued_at(cancel_time + 1_000), Ok(accrued_at_cancel));
+}
+
+// ---------------------------------------------------------------- views: streamed_so_far, time_remaining
+
+#[test]
+fn streamed_so_far_matches_accrued_at() {
+    let f = Fixture::new(true);
+    f.at(START + 100);
+    assert_eq!(
+        f.client.streamed_so_far(),
+        f.client.get().accrued_at(START + 100).unwrap()
+    );
+}
+
+#[test]
+fn streamed_so_far_before_start_is_zero() {
+    let f = Fixture::new(true);
+    f.at(START - 100);
+    assert_eq!(f.client.streamed_so_far(), 0);
+}
+
+#[test]
+fn streamed_so_far_after_stop_is_full_deposit() {
+    let f = Fixture::new(true);
+    f.at(STOP + 100);
+    assert_eq!(f.client.streamed_so_far(), DEPOSITED);
+}
+
+#[test]
+fn streamed_so_far_frozen_at_cancellation() {
+    let f = Fixture::new(true);
+    let cancel_time = START + 300;
+    f.at(cancel_time);
+    f.client.cancel();
+    let streamed_at_cancel = f.client.streamed_so_far();
+
+    // Advance time and verify it doesn't change
+    f.at(STOP + 1000);
+    assert_eq!(f.client.streamed_so_far(), streamed_at_cancel);
+}
+
+#[test]
+fn time_remaining_decreases_over_time() {
+    let f = Fixture::new(true);
+    f.at(START);
+    assert_eq!(f.client.time_remaining(), DURATION);
+
+    f.at(START + 100);
+    assert_eq!(f.client.time_remaining(), DURATION - 100);
+
+    f.at(START + 500);
+    assert_eq!(f.client.time_remaining(), DURATION - 500);
+}
+
+#[test]
+fn time_remaining_clamps_at_zero() {
+    let f = Fixture::new(true);
+    f.at(STOP + 1000);
+    assert_eq!(f.client.time_remaining(), 0);
+}
+
+#[test]
+fn time_remaining_frozen_at_cancellation() {
+    let f = Fixture::new(true);
+    let cancel_time = START + 300;
+    f.at(cancel_time);
+    f.client.cancel();
+    let remaining_at_cancel = f.client.time_remaining();
+
+    // Advance past stop and verify it doesn't change
+    f.at(STOP + 1000);
+    assert_eq!(f.client.time_remaining(), remaining_at_cancel);
+}
 }

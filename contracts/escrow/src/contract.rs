@@ -297,6 +297,17 @@ impl EscrowContract {
     pub fn get(env: Env) -> Result<Escrow, Error> {
         storage::load_view(&env)
     }
+
+    /// The arbiter, if one was configured.
+    pub fn arbiter(env: Env) -> Result<Option<Address>, Error> {
+        Ok(storage::load_view(&env)?.arbiter)
+    }
+
+    /// The depositor and beneficiary as (depositor, beneficiary).
+    pub fn parties(env: Env) -> Result<(Address, Address), Error> {
+        let escrow = storage::load_view(&env)?;
+        Ok((escrow.depositor, escrow.beneficiary))
+    }
 }
 
 // Helpers. Deliberately outside `#[contractimpl]` so they do not become
