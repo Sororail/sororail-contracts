@@ -129,7 +129,7 @@ jobs:
       # specs` generates each interface and fails if it does not parse or
       # references an undefined type. Action tag == CLI version; keep in step
       # with DEPLOYMENTS.md.
-      - uses: stellar/stellar-cli@8e402ea28202950b272fbabc34caad4d2f64fe87 # v27.1.0
+      - uses: stellar/stellar-cli@f2a7b74175c34585f3b30a1abf42a2d41cbcc390 # v30.0.1
       - run: make specs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
