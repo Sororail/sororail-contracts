@@ -23,6 +23,7 @@ mod create;
 mod property;
 mod revoke;
 mod schedule;
+mod views;
 
 const TOTAL: i128 = 1_000_000;
 const START: u64 = 1_000_000;
