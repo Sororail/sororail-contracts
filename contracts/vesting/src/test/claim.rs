@@ -156,3 +156,164 @@ fn claimable_equals_vested_minus_claimed_after_partial_claim() {
     assert_eq!(claimable, vested_now - grant.claimed);
     f.assert_conserved();
 }
+
+// issue #406: partial claims with claim_amount
+
+// ------------------------------------------------------- issue #406: partial claims with claim_amount
+
+#[test]
+fn claim_amount_rejects_zero() {
+    let f = Fixture::new(true);
+    f.at(START + 500);
+    assert_eq!(
+        f.client.try_claim_amount(&0),
+        Err(Ok(Error::VestingNothingToClaim))
+    );
+}
+
+#[test]
+fn claim_amount_rejects_negative() {
+    let f = Fixture::new(true);
+    f.at(START + 500);
+    assert_eq!(
+        f.client.try_claim_amount(&-100),
+        Err(Ok(Error::VestingNothingToClaim))
+    );
+}
+
+#[test]
+fn claim_amount_rejects_amounts_above_claimable() {
+    let f = Fixture::new(true);
+    f.at(START + 500);
+    let claimable = f.client.claimable();
+    assert_eq!(
+        f.client.try_claim_amount(&(claimable + 1)),
+        Err(Ok(Error::VestingNothingToClaim))
+    );
+}
+
+#[test]
+fn claim_amount_transfers_exactly_the_requested_amount() {
+    let f = Fixture::new(true);
+    f.at(START + 500);
+    let claimable = f.client.claimable();
+    let claim = claimable / 2;
+    assert_eq!(f.client.claim_amount(&claim), claim);
+    assert_eq!(f.token.balance(&f.beneficiary), claim);
+    f.assert_conserved();
+}
+
+#[test]
+fn claim_amount_accepts_the_full_claimable() {
+    let f = Fixture::new(true);
+    f.at(START + 500);
+    let claimable = f.client.claimable();
+    assert_eq!(f.client.claim_amount(&claimable), claimable);
+    assert_eq!(f.token.balance(&f.beneficiary), claimable);
+    f.assert_conserved();
+}
+
+#[test]
+fn claim_amount_emits_the_claimed_event_with_actual_amount() {
+    let f = Fixture::new(true);
+    f.at(START + 500);
+    let claimable = f.client.claimable();
+    let claim = claimable / 2;
+    f.client.claim_amount(&claim);
+
+    let expected = Claimed {
+        beneficiary: f.beneficiary.clone(),
+        amount: claim,
+        total_claimed: claim,
+    };
+    let all = f.env.events().all().filter_by_contract(&f.client.address);
+    let events = all.events();
+    let last = events.last().expect("no events emitted");
+    assert_eq!(last, &expected.to_xdr(&f.env, &f.client.address));
+}
+
+#[test]
+fn mixed_claim_and_claim_amount_conserves() {
+    let f = Fixture::new(true);
+    f.at(START + 500);
+    let first_claimable = f.client.claimable();
+    let claim_half = first_claimable / 2;
+
+    f.client.claim_amount(&claim_half);
+    f.assert_conserved();
+
+    f.at(START + 750);
+    f.client.claim();
+    f.assert_conserved();
+
+    f.at(START + 1000);
+    f.client.claim_amount(&(TOTAL / 100));
+    f.assert_conserved();
+}
+
+// issue #407: claim to a different destination
+
+// ------------------------------------------------------- issue #407: claim to a different destination
+
+#[test]
+fn claim_to_transfers_to_destination() {
+    let f = Fixture::new(true);
+    let destination = f.env.generate_contract_id();
+    f.at(START + 500);
+    let claimable = f.client.claimable();
+    assert_eq!(f.client.claim_to(&destination), claimable);
+    assert_eq!(f.token.balance(&destination), claimable);
+    f.assert_conserved();
+}
+
+#[test]
+fn claim_to_updates_claimed_field() {
+    let f = Fixture::new(true);
+    let destination = f.env.generate_contract_id();
+    f.at(START + 500);
+    let claimable = f.client.claimable();
+    f.client.claim_to(&destination);
+    let grant = f.client.get();
+    assert_eq!(grant.claimed, claimable);
+    f.assert_conserved();
+}
+
+#[test]
+fn claim_to_requires_beneficiary_auth() {
+    let f = Fixture::new(true);
+    let destination = f.env.generate_contract_id();
+    f.at(START + 500);
+    f.env.set_auths(&[]);
+    assert!(f.client.try_claim_to(&destination).is_err());
+}
+
+#[test]
+fn claim_to_before_cliff_fails() {
+    let f = Fixture::new(true);
+    let destination = f.env.generate_contract_id();
+    f.at(START + CLIFF - 1);
+    assert_eq!(
+        f.client.try_claim_to(&destination),
+        Err(Ok(Error::VestingCliffNotReached))
+    );
+}
+
+#[test]
+fn claim_and_claim_to_work_together() {
+    let f = Fixture::new(true);
+    let destination = f.env.generate_contract_id();
+
+    f.at(START + 500);
+    let first_claimable = f.client.claimable();
+
+    f.client.claim();
+    assert_eq!(f.token.balance(&f.beneficiary), first_claimable);
+    f.assert_conserved();
+
+    f.at(START + 750);
+    let second_claimable = f.client.claimable();
+
+    f.client.claim_to(&destination);
+    assert_eq!(f.token.balance(&destination), second_claimable);
+    f.assert_conserved();
+}

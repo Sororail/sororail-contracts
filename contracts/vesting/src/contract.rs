@@ -111,36 +111,25 @@ impl VestingContract {
     /// revoked grant keeps its vested portion claimable, which is the whole
     /// point of vesting.
     pub fn claim(env: Env) -> Result<i128, Error> {
-        let mut grant = storage::load(&env)?;
-        grant.beneficiary.require_auth();
+        Self::claim_internal(&env, None, None)
+    }
 
-        let now = env.ledger().timestamp();
-        // A revoked grant is evaluated at its revocation time, so report the
-        // cliff as unreached only when it genuinely never was.
-        let effective = match grant.revoked_at {
-            Some(revoked) => now.min(revoked),
-            None => now,
-        };
-        if effective < grant.cliff_at() {
-            return Err(Error::VestingCliffNotReached);
-        }
-
-        let claimable = grant.claimable_at(now)?;
-        if claimable <= 0 {
+    /// Transfers a specific amount of vested-but-unclaimed tokens to the beneficiary.
+    ///
+    /// Returns the amount claimed. Rejects zero, negative amounts, or amounts
+    /// exceeding what is claimable.
+    pub fn claim_amount(env: Env, amount: i128) -> Result<i128, Error> {
+        if amount <= 0 {
             return Err(Error::VestingNothingToClaim);
         }
+        Self::claim_internal(&env, Some(amount), None)
+    }
 
-        grant.claimed = math::add(grant.claimed, claimable)?;
-        storage::save(&env, &grant);
-
-        Self::pay(&env, &grant, &grant.beneficiary, claimable);
-        events::Claimed {
-            beneficiary: grant.beneficiary.clone(),
-            amount: claimable,
-            total_claimed: grant.claimed,
-        }
-        .publish(&env);
-        Ok(claimable)
+    /// Transfers vested-but-unclaimed tokens to a specified destination.
+    ///
+    /// Authorized by the beneficiary. Returns the amount claimed.
+    pub fn claim_to(env: Env, destination: Address) -> Result<i128, Error> {
+        Self::claim_internal(&env, None, Some(destination))
     }
 
     /// Reclaims the unvested portion for the grantor.
@@ -195,6 +184,21 @@ impl VestingContract {
         grant.claimable_at(env.ledger().timestamp())
     }
 
+    /// Total not yet vested as of `at`, whether claimed or not. Pure view.
+    pub fn unvested(env: Env, at: u64) -> Result<i128, Error> {
+        storage::load_view(&env)?.unvested(at)
+    }
+
+    /// Percentage of total vested as of `at`, in basis points (0-10000). Pure view.
+    pub fn percent_vested_bps(env: Env, at: u64) -> Result<i128, Error> {
+        storage::load_view(&env)?.percent_vested_bps(at)
+    }
+
+    /// Next unlock timestamp after `at`, or `None` if fully vested. Pure view.
+    pub fn next_unlock_at(env: Env, at: u64) -> Result<Option<u64>, Error> {
+        Ok(storage::load_view(&env)?.next_unlock_at(at))
+    }
+
     /// The schedule as a list of checkpoints, in ascending time order.
     ///
     /// Lets a client draw the schedule without recomputing it. Between two
@@ -225,6 +229,56 @@ impl VestingContract {
 
 // Helpers. Outside `#[contractimpl]` so they are not contract entry points.
 impl VestingContract {
+    /// Internal claim helper used by `claim`, `claim_amount`, and `claim_to`.
+    ///
+    /// `amount_opt`: if Some, claim exactly that amount; if None, claim all claimable.
+    /// `destination_opt`: if Some, send to this address; if None, send to beneficiary.
+    fn claim_internal(
+        env: &Env,
+        amount_opt: Option<i128>,
+        destination_opt: Option<Address>,
+    ) -> Result<i128, Error> {
+        let mut grant = storage::load(env)?;
+        grant.beneficiary.require_auth();
+
+        let now = env.ledger().timestamp();
+        let effective = match grant.revoked_at {
+            Some(revoked) => now.min(revoked),
+            None => now,
+        };
+        if effective < grant.cliff_at() {
+            return Err(Error::VestingCliffNotReached);
+        }
+
+        let claimable = grant.claimable_at(now)?;
+        if claimable <= 0 {
+            return Err(Error::VestingNothingToClaim);
+        }
+
+        let amount = match amount_opt {
+            Some(amt) => {
+                if amt > claimable {
+                    return Err(Error::VestingNothingToClaim);
+                }
+                amt
+            }
+            None => claimable,
+        };
+
+        grant.claimed = math::add(grant.claimed, amount)?;
+        storage::save(env, &grant);
+
+        let recipient = destination_opt.unwrap_or_else(|| grant.beneficiary.clone());
+        Self::pay(env, &grant, &recipient, amount);
+        events::Claimed {
+            beneficiary: grant.beneficiary.clone(),
+            amount,
+            total_claimed: grant.claimed,
+        }
+        .publish(env);
+        Ok(amount)
+    }
+
     /// Sends `amount` of the granted token from this contract to `to`.
     ///
     /// Always called after the state change has been persisted.
