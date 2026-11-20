@@ -802,6 +802,125 @@ fn report_batch_ceiling() {
     std::println!("measured batch ceiling in the test environment: {ceiling:?}");
 }
 
+// ----------------------------------------- #431: per-recipient budget cost
+
+/// CPU instructions and memory bytes one `execute` of `n` recipients consumes.
+///
+/// Each size gets a fresh environment so set-up (token registration, minting,
+/// address generation) is excluded: the budget is reset to unlimited
+/// immediately before the call, which both zeroes the counters and lets sizes
+/// above the default-budget ceiling (e.g. 50) run to completion.
+fn measure_execute_cost(n: u32) -> (u64, u64) {
+    let env = Env::default();
+    env.mock_all_auths();
+    let funder = Address::generate(&env);
+    let issuer = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(issuer).address();
+    StellarAssetClient::new(&env, &token).mint(&funder, &MINT);
+    let client = BatchPayoutContractClient::new(&env, &env.register(BatchPayoutContract, ()));
+
+    let mut recipients = Vec::new(&env);
+    for _ in 0..n {
+        recipients.push_back(Payment {
+            to: Address::generate(&env),
+            amount: 1,
+        });
+    }
+
+    let mut budget = env.cost_estimate().budget();
+    budget.reset_unlimited();
+    budget.reset_tracker();
+    let receipt = client.execute(&funder, &token, &recipients, &false);
+    assert_eq!(receipt.count, n);
+
+    let budget = env.cost_estimate().budget();
+    (budget.cpu_instruction_cost(), budget.memory_bytes_cost())
+}
+
+/// Relative difference between two marginal costs, as a fraction of the larger.
+fn relative_spread(a: f64, b: f64) -> f64 {
+    (a - b).abs() / a.max(b)
+}
+
+#[test]
+fn per_recipient_cost_grows_linearly() {
+    // #431: MAX_RECIPIENTS is derived from the budget, so record how the
+    // per-recipient cost was reached. Measures 10, 50 and MAX_RECIPIENTS and
+    // asserts that the marginal cost of each extra recipient is the same
+    // (within tolerance) across both intervals, i.e. cost is linear in n.
+    // Run with `--nocapture` to see the table this prints.
+    const TOLERANCE: f64 = 0.10;
+
+    let mut sizes = [10, MAX_RECIPIENTS, 50];
+    sizes.sort_unstable();
+    assert!(
+        sizes[0] < sizes[1] && sizes[1] < sizes[2],
+        "sizes must be distinct to measure two intervals: {sizes:?}"
+    );
+
+    let costs: std::vec::Vec<(u32, u64, u64)> = sizes
+        .iter()
+        .map(|&n| {
+            let (cpu, mem) = measure_execute_cost(n);
+            (n, cpu, mem)
+        })
+        .collect();
+
+    std::println!("batch_payout::execute budget cost (MAX_RECIPIENTS = {MAX_RECIPIENTS})");
+    std::println!(
+        "{:>10} {:>14} {:>12} {:>14} {:>12}",
+        "recipients",
+        "cpu_insns",
+        "mem_bytes",
+        "cpu/recipient",
+        "mem/recipient"
+    );
+    for &(n, cpu, mem) in &costs {
+        std::println!(
+            "{:>10} {:>14} {:>12} {:>14} {:>12}",
+            n,
+            cpu,
+            mem,
+            cpu / u64::from(n),
+            mem / u64::from(n)
+        );
+    }
+
+    let marginal = |lo: (u32, u64, u64), hi: (u32, u64, u64)| {
+        let dn = f64::from(hi.0 - lo.0);
+        (
+            (hi.1 as f64 - lo.1 as f64) / dn,
+            (hi.2 as f64 - lo.2 as f64) / dn,
+        )
+    };
+    let (cpu_a, mem_a) = marginal(costs[0], costs[1]);
+    let (cpu_b, mem_b) = marginal(costs[1], costs[2]);
+    std::println!(
+        "marginal cpu/recipient: {cpu_a:.0} ({}..{}) vs {cpu_b:.0} ({}..{})",
+        costs[0].0,
+        costs[1].0,
+        costs[1].0,
+        costs[2].0
+    );
+    std::println!(
+        "marginal mem/recipient: {mem_a:.0} ({}..{}) vs {mem_b:.0} ({}..{})",
+        costs[0].0,
+        costs[1].0,
+        costs[1].0,
+        costs[2].0
+    );
+
+    assert!(cpu_a > 0.0 && mem_a > 0.0, "cost must grow with recipients");
+    assert!(
+        relative_spread(cpu_a, cpu_b) <= TOLERANCE,
+        "cpu cost per recipient is not linear: {cpu_a:.0} vs {cpu_b:.0}"
+    );
+    assert!(
+        relative_spread(mem_a, mem_b) <= TOLERANCE,
+        "memory cost per recipient is not linear: {mem_a:.0} vs {mem_b:.0}"
+    );
+}
+
 // ------------------------------------------------ #435: env.auths() assertions
 
 #[test]
