@@ -11,6 +11,7 @@ use crate::{
     types::State,
 };
 
+mod budget;
 mod cancel;
 mod dispute;
 mod fee_on_transfer;

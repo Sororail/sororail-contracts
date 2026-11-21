@@ -67,3 +67,12 @@ pub struct Extended {
     pub new_stop: u64,
     pub deposited: i128,
 }
+
+/// The recipient transferred the stream to a new recipient address.
+#[contractevent(topics = ["stream", "recipient_transferred"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecipientTransferred {
+    #[topic]
+    pub from: Address,
+    pub to: Address,
+}

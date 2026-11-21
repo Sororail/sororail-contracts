@@ -253,6 +253,38 @@ impl StreamContract {
     pub fn get(env: Env) -> Result<Stream, Error> {
         storage::load_view(&env)
     }
+
+    /// Transfers the stream to a new recipient, allowing the stream to be handed
+    /// to a different address. Only the current recipient may do this.
+    ///
+    /// The new recipient must be different from the current recipient, but can
+    /// be the same as the sender. This allows the stream's funds to revert to
+    /// the sender by explicit handoff (not just by cancellation).
+    ///
+    /// Any accrued but unwithdrawn amount remains the property of the current
+    /// (original) recipient and must be withdrawn before the transfer.
+    pub fn transfer_recipient(env: Env, new_recipient: Address) -> Result<(), Error> {
+        let mut stream = storage::load(&env)?;
+        if stream.is_cancelled() {
+            return Err(Error::StreamCancelled);
+        }
+        stream.recipient.require_auth();
+
+        if new_recipient == stream.recipient {
+            return Err(Error::IdenticalParties);
+        }
+
+        let old_recipient = stream.recipient.clone();
+        stream.recipient = new_recipient.clone();
+        storage::save(&env, &stream);
+
+        events::RecipientTransferred {
+            from: old_recipient,
+            to: new_recipient,
+        }
+        .publish(&env);
+        Ok(())
+    }
 }
 
 // Helpers. Outside `#[contractimpl]` so they are not contract entry points.
