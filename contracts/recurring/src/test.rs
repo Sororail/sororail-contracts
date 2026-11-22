@@ -11,7 +11,7 @@ use sororail_common::{storage::INSTANCE_BUMP, testutils::TestEnv, Error};
 
 use crate::{
     contract::{RecurringContract, RecurringContractClient},
-    events::{Authorized, Cancelled, Charged},
+    events::{Authorized, Cancelled, Charged, Paused, Resumed},
 };
 
 #[test]
@@ -58,6 +58,12 @@ impl Fixture<'_> {
         let env = te.env().clone();
 
         let client = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
+        let token = TokenClient::new(&env, &token_address);
+        // The payer grants the contract an allowance -- without this, no charge
+        // can move anything, and `authorize` itself fails fast. Approving
+        // first is therefore required.
+        let expiry = env.ledger().sequence() + 100_000;
+        token.approve(&payer, &client.address, &MINT, &expiry);
         client.authorize(
             &payer,
             &payee,
@@ -67,12 +73,6 @@ impl Fixture<'_> {
             &max_periods,
             &valid_until,
         );
-
-        let token = TokenClient::new(&env, &token_address);
-        // The payer grants the contract an allowance -- without this, no charge
-        // can move anything, however valid the authorization record is.
-        let expiry = env.ledger().sequence() + 100_000;
-        token.approve(&payer, &client.address, &MINT, &expiry);
 
         Fixture {
             token,
@@ -272,6 +272,9 @@ fn authorize_emits_the_authorized_event() {
     let token = env.register_stellar_asset_contract_v2(issuer).address();
 
     let client = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
+    // `authorize` fails fast without an allowance covering the cap.
+    let expiry = env.ledger().sequence() + 100_000;
+    TokenClient::new(&env, &token).approve(&payer, &client.address, &(AMOUNT * 12), &expiry);
     client.authorize(&payer, &payee, &token, &AMOUNT, &PERIOD, &Some(12), &None);
 
     let expected = Authorized {
@@ -951,6 +954,11 @@ fn update_amount_respects_max_amount_cap() {
 
     let client = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
 
+    // The payer must approve before `authorize`, which checks the allowance.
+    let token = TokenClient::new(&env, &token_address);
+    let expiry = env.ledger().sequence() + 100_000;
+    token.approve(&payer, &client.address, &MINT, &expiry);
+
     // Create authorization with max_amount constraint
     // Note: This would need to be added to the authorize method
     // For now, we can test that trying to exceed a constraint fails
@@ -964,10 +972,6 @@ fn update_amount_respects_max_amount_cap() {
         &None,
         &None,
     );
-
-    let token = TokenClient::new(&env, &token_address);
-    let expiry = env.ledger().sequence() + 100_000;
-    token.approve(&payer, &client.address, &MINT, &expiry);
 
     // For testing, we'd need update_amount to check against max_amount
     // This is a placeholder test
@@ -996,4 +1000,308 @@ fn update_amount_rejects_non_positive_amount() {
             "amount {bad} was accepted"
         );
     }
+}
+
+// ---- total_charged ----
+
+#[test]
+fn total_charged_starts_at_zero_and_matches_the_sum_of_charges() {
+    let f = Fixture::new(None);
+    assert_eq!(f.client.total_charged(), 0);
+
+    let mut expected = 0i128;
+    f.at(START + PERIOD);
+    expected += f.client.charge();
+    assert_eq!(f.client.total_charged(), expected);
+
+    // An amount change mid-subscription: the total tracks each real charge.
+    f.client.update_amount(&(AMOUNT * 3));
+    f.at(START + PERIOD * 2);
+    expected += f.client.charge(); // still the old amount (in flight)
+    f.at(START + PERIOD * 4);
+    expected += f.client.charge(); // new amount
+    f.at(START + PERIOD * 6);
+    expected += f.client.charge();
+
+    assert_eq!(expected, AMOUNT * 2 + AMOUNT * 3 * 2);
+    assert_eq!(f.client.total_charged(), expected);
+    assert_eq!(f.client.get().total_charged, expected);
+    assert_eq!(f.token.balance(&f.payee), expected);
+}
+
+#[test]
+fn total_charged_includes_charge_up_to_catch_up() {
+    let f = Fixture::new(None);
+    f.at(START + PERIOD * 3);
+    let pulled = f.client.charge_up_to(&3);
+    assert_eq!(pulled, AMOUNT * 3);
+    assert_eq!(f.client.total_charged(), pulled);
+}
+
+#[test]
+fn total_charged_is_unchanged_by_a_failed_charge() {
+    let f = Fixture::new(None);
+    f.at(START + PERIOD);
+    f.client.charge();
+    // Not due yet: the failed call must not move the total.
+    assert_eq!(
+        f.client.try_charge(),
+        Err(Ok(Error::RecurringPeriodNotElapsed))
+    );
+    assert_eq!(f.client.total_charged(), AMOUNT);
+}
+
+// ---- pause / resume ----
+
+#[test]
+fn charge_fails_while_paused() {
+    let f = Fixture::new(None);
+    f.at(START + PERIOD);
+    f.client.pause();
+    assert!(f.client.get().paused_at.is_some());
+    assert!(!f.client.is_chargeable());
+    assert_eq!(f.client.try_charge(), Err(Ok(Error::RecurringPaused)));
+    assert_eq!(
+        f.client.try_charge_up_to(&1),
+        Err(Ok(Error::RecurringPaused))
+    );
+    assert_eq!(f.token.balance(&f.payee), 0);
+    assert_eq!(f.client.total_charged(), 0);
+}
+
+#[test]
+fn resume_shifts_the_schedule_by_the_paused_time() {
+    let f = Fixture::new(None);
+    let due = START + PERIOD;
+    // Pause half way through the first period, for three full periods.
+    f.at(START + PERIOD / 2);
+    f.client.pause();
+    f.at(START + PERIOD / 2 + PERIOD * 3);
+    f.client.resume();
+
+    assert!(f.client.get().paused_at.is_none());
+    assert_eq!(f.client.next_chargeable_at(), due + PERIOD * 3);
+
+    // Not chargeable the instant the payer resumes.
+    assert!(!f.client.is_chargeable());
+    assert_eq!(
+        f.client.try_charge(),
+        Err(Ok(Error::RecurringPeriodNotElapsed))
+    );
+
+    // Same time left in the period as when it was paused.
+    f.at(due + PERIOD * 3);
+    assert_eq!(f.client.charge(), AMOUNT);
+}
+
+#[test]
+fn pause_and_resume_emit_events() {
+    let f = Fixture::new(None);
+    f.at(START + 10);
+    f.client.pause();
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.client.address),
+        std::vec![Paused {
+            payer: f.payer.clone(),
+            paused_at: START + 10,
+        }
+        .to_xdr(&f.env, &f.client.address)]
+    );
+
+    f.at(START + 110);
+    f.client.resume();
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.client.address),
+        std::vec![Resumed {
+            payer: f.payer.clone(),
+            resumed_at: START + 110,
+            paused_seconds: 100,
+            next_chargeable_at: START + PERIOD + 100,
+        }
+        .to_xdr(&f.env, &f.client.address)]
+    );
+}
+
+#[test]
+fn pause_and_resume_reject_invalid_transitions() {
+    let f = Fixture::new(None);
+    assert_eq!(f.client.try_resume(), Err(Ok(Error::RecurringNotPaused)));
+    f.client.pause();
+    assert_eq!(f.client.try_pause(), Err(Ok(Error::RecurringPaused)));
+    f.client.resume();
+    assert_eq!(f.client.try_resume(), Err(Ok(Error::RecurringNotPaused)));
+
+    f.client.cancel(&f.payer);
+    assert_eq!(f.client.try_pause(), Err(Ok(Error::RecurringCancelled)));
+    assert_eq!(f.client.try_resume(), Err(Ok(Error::RecurringCancelled)));
+}
+
+#[test]
+fn pause_and_resume_error_before_authorize() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
+    assert_eq!(c.try_pause(), Err(Ok(Error::NotInitialized)));
+    assert_eq!(c.try_resume(), Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+#[should_panic]
+fn pause_requires_the_payers_authorization() {
+    let f = Fixture::new(None);
+    f.env.set_auths(&[]);
+    f.client.pause();
+}
+
+#[test]
+fn a_paused_authorization_can_still_be_cancelled() {
+    let f = Fixture::new(None);
+    f.client.pause();
+    f.client.cancel(&f.payee);
+    assert!(f.client.get().cancelled);
+}
+
+// ---- allowance sanity check on authorize ----
+
+#[test]
+fn authorize_rejects_a_zero_allowance() {
+    let te = TestEnv::at(START);
+    let payer = te.make_address();
+    let payee = te.make_address();
+    let token = te.register_token();
+    te.mint(&token, &payer, MINT);
+    let env = te.env().clone();
+    let c = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
+    assert_eq!(
+        c.try_authorize(&payer, &payee, &token, &AMOUNT, &PERIOD, &None, &None),
+        Err(Ok(Error::RecurringInsufficientAllowance))
+    );
+    assert_eq!(c.try_get(), Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn authorize_checks_the_allowance_against_the_cap_or_one_period() {
+    let te = TestEnv::at(START);
+    let payer = te.make_address();
+    let payee = te.make_address();
+    let token_address = te.register_token();
+    te.mint(&token_address, &payer, MINT);
+    let env = te.env().clone();
+    let token = TokenClient::new(&env, &token_address);
+    let c = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
+    let expiry = env.ledger().sequence() + 100_000;
+
+    // Two periods of allowance: enough for a cap of 2, not for a cap of 3.
+    token.approve(&payer, &c.address, &(AMOUNT * 2), &expiry);
+    assert_eq!(
+        c.try_authorize(
+            &payer,
+            &payee,
+            &token_address,
+            &AMOUNT,
+            &PERIOD,
+            &Some(3),
+            &None
+        ),
+        Err(Ok(Error::RecurringInsufficientAllowance))
+    );
+    c.authorize(
+        &payer,
+        &payee,
+        &token_address,
+        &AMOUNT,
+        &PERIOD,
+        &Some(2),
+        &None,
+    );
+    assert_eq!(c.get().max_periods, Some(2));
+}
+
+#[test]
+fn authorize_uncapped_needs_one_period_of_allowance() {
+    let te = TestEnv::at(START);
+    let payer = te.make_address();
+    let payee = te.make_address();
+    let token_address = te.register_token();
+    te.mint(&token_address, &payer, MINT);
+    let env = te.env().clone();
+    let token = TokenClient::new(&env, &token_address);
+    let c = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
+    let expiry = env.ledger().sequence() + 100_000;
+
+    token.approve(&payer, &c.address, &(AMOUNT - 1), &expiry);
+    assert_eq!(
+        c.try_authorize(
+            &payer,
+            &payee,
+            &token_address,
+            &AMOUNT,
+            &PERIOD,
+            &None,
+            &None
+        ),
+        Err(Ok(Error::RecurringInsufficientAllowance))
+    );
+    token.approve(&payer, &c.address, &AMOUNT, &expiry);
+    c.authorize(
+        &payer,
+        &payee,
+        &token_address,
+        &AMOUNT,
+        &PERIOD,
+        &None,
+        &None,
+    );
+}
+
+#[test]
+fn the_allowance_can_still_shrink_after_authorize() {
+    let f = Fixture::new(None);
+    let expiry = f.env.ledger().sequence() + 100_000;
+    f.token.approve(&f.payer, &f.client.address, &0, &expiry);
+    f.at(START + PERIOD);
+    assert!(f.client.try_charge().is_err());
+    assert_eq!(f.client.total_charged(), 0);
+}
+
+// ---- charges_made / charges_remaining ----
+
+#[test]
+fn charges_made_plus_remaining_equals_the_cap() {
+    let f = Fixture::new(Some(3));
+    let cap = 3u32;
+    assert_eq!(f.client.charges_made(), 0);
+    assert_eq!(f.client.charges_remaining(), Some(cap));
+
+    for i in 1..=cap {
+        f.at(START + PERIOD * u64::from(i) * 2);
+        f.client.charge();
+        let made = f.client.charges_made();
+        assert_eq!(made, i);
+        let remaining = f.client.charges_remaining().unwrap();
+        assert_eq!(made + remaining, cap);
+        assert_eq!(f.client.remaining_periods(), Some(remaining));
+    }
+    assert_eq!(f.client.charges_remaining(), Some(0));
+    assert_eq!(f.client.try_charge(), Err(Ok(Error::RecurringExhausted)));
+}
+
+#[test]
+fn charges_made_counts_for_uncapped_authorizations() {
+    let f = Fixture::new(None);
+    f.at(START + PERIOD * 2);
+    f.client.charge_up_to(&2);
+    assert_eq!(f.client.charges_made(), 2);
+    assert_eq!(f.client.charges_remaining(), None);
+    assert_eq!(f.client.remaining_periods(), None);
+}
+
+#[test]
+fn charges_views_error_before_authorize() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let c = RecurringContractClient::new(&env, &env.register(RecurringContract, ()));
+    assert_eq!(c.try_charges_made(), Err(Ok(Error::NotInitialized)));
+    assert_eq!(c.try_charges_remaining(), Err(Ok(Error::NotInitialized)));
+    assert_eq!(c.try_total_charged(), Err(Ok(Error::NotInitialized)));
 }

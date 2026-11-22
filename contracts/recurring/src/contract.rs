@@ -34,6 +34,7 @@ fn charge_one_period(
     // `next_chargeable_at` and cannot charge the same period twice.
     // Compare `escrow::pay`, where persisting state before the token call
     // serves reentrancy protection specifically.
+    authorization.total_charged = math::add(authorization.total_charged, amount)?;
     storage::save(env, authorization);
 
     token::TokenClient::new(env, &authorization.token).transfer_from(
@@ -80,6 +81,14 @@ impl RecurringContract {
     /// must also `approve` this contract as a spender on the token for at
     /// least the amount they intend to allow. That allowance is the real cap:
     /// revoking it on the token stops charges even without cancelling here.
+    ///
+    /// To fail fast, `authorize` checks that the payer's current allowance for
+    /// this contract covers `amount_per_period * max_periods` when capped, or
+    /// one `amount_per_period` when uncapped, and returns
+    /// `RecurringInsufficientAllowance` otherwise. So the payer must `approve`
+    /// **before** calling `authorize`. This is a point-in-time check only: the
+    /// allowance can still be lowered, expire or be revoked later, and a
+    /// charge then fails with the token's own error.
     pub fn authorize(
         env: Env,
         payer: Address,
@@ -106,6 +115,16 @@ impl RecurringContract {
 
         payer.require_auth();
 
+        let required_allowance = match max_periods {
+            Some(cap) => math::mul(amount_per_period, i128::from(cap))?,
+            None => amount_per_period,
+        };
+        let allowance = token::TokenClient::new(&env, &token)
+            .allowance(&payer, &env.current_contract_address());
+        if allowance < required_allowance {
+            return Err(Error::RecurringInsufficientAllowance);
+        }
+
         let first_chargeable_at = env
             .ledger()
             .timestamp()
@@ -125,6 +144,8 @@ impl RecurringContract {
             valid_until,
             max_amount: None,
             pending_amount_per_period: None,
+            total_charged: 0,
+            paused_at: None,
         };
         storage::save(&env, &authorization);
 
@@ -157,6 +178,9 @@ impl RecurringContract {
         authorization.payee.require_auth();
         if authorization.cancelled {
             return Err(Error::RecurringCancelled);
+        }
+        if authorization.is_paused() {
+            return Err(Error::RecurringPaused);
         }
         if authorization.is_exhausted() {
             return Err(Error::RecurringExhausted);
@@ -195,6 +219,9 @@ impl RecurringContract {
         if authorization.cancelled {
             return Err(Error::RecurringCancelled);
         }
+        if authorization.is_paused() {
+            return Err(Error::RecurringPaused);
+        }
         if authorization.is_exhausted() {
             return Err(Error::RecurringExhausted);
         }
@@ -223,6 +250,66 @@ impl RecurringContract {
             charged = charged.checked_add(1).ok_or(Error::Overflow)?;
         }
         Ok(total)
+    }
+
+    /// Pauses charging. Callable only by the payer.
+    ///
+    /// While paused, `charge` and `charge_up_to` fail with `RecurringPaused`.
+    /// The authorization and the token allowance are untouched. See
+    /// [`Authorization`] ("Pausing") for how paused time affects the schedule.
+    pub fn pause(env: Env) -> Result<(), Error> {
+        let mut authorization = storage::load(&env)?;
+        authorization.payer.require_auth();
+        if authorization.cancelled {
+            return Err(Error::RecurringCancelled);
+        }
+        if authorization.is_paused() {
+            return Err(Error::RecurringPaused);
+        }
+
+        let now = env.ledger().timestamp();
+        authorization.paused_at = Some(now);
+        storage::save(&env, &authorization);
+
+        events::Paused {
+            payer: authorization.payer.clone(),
+            paused_at: now,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Resumes a paused authorization. Callable only by the payer.
+    ///
+    /// Paused time **shifts the schedule**: `next_chargeable_at` moves later by
+    /// the length of the pause, so a period already partly elapsed when the
+    /// payer paused resumes with the same time left, and the payer is never
+    /// charged the instant they resume.
+    pub fn resume(env: Env) -> Result<(), Error> {
+        let mut authorization = storage::load(&env)?;
+        authorization.payer.require_auth();
+        if authorization.cancelled {
+            return Err(Error::RecurringCancelled);
+        }
+        let paused_at = authorization.paused_at.ok_or(Error::RecurringNotPaused)?;
+
+        let now = env.ledger().timestamp();
+        let paused_seconds = now.saturating_sub(paused_at);
+        authorization.next_chargeable_at = authorization
+            .next_chargeable_at
+            .checked_add(paused_seconds)
+            .ok_or(Error::InvalidTimeRange)?;
+        authorization.paused_at = None;
+        storage::save(&env, &authorization);
+
+        events::Resumed {
+            payer: authorization.payer.clone(),
+            resumed_at: now,
+            paused_seconds,
+            next_chargeable_at: authorization.next_chargeable_at,
+        }
+        .publish(&env);
+        Ok(())
     }
 
     /// Updates the amount per period, effective from the next period.
@@ -297,6 +384,28 @@ impl RecurringContract {
     /// Charges still permitted under the cap, if there is one.
     pub fn remaining_periods(env: Env) -> Result<Option<u32>, Error> {
         Ok(storage::load_view(&env)?.remaining_periods())
+    }
+
+    /// Charges still permitted under the cap, if there is one.
+    ///
+    /// Same value as `remaining_periods`; paired with `charges_made` so that
+    /// `charges_made + charges_remaining == max_periods` for capped
+    /// authorizations.
+    pub fn charges_remaining(env: Env) -> Result<Option<u32>, Error> {
+        Ok(storage::load_view(&env)?.remaining_periods())
+    }
+
+    /// How many charges have been taken so far.
+    pub fn charges_made(env: Env) -> Result<u32, Error> {
+        Ok(storage::load_view(&env)?.periods_charged)
+    }
+
+    /// Cumulative amount charged so far, in the token's smallest unit.
+    ///
+    /// Equals the sum of every per-charge amount, including charges made after
+    /// an `update_amount`.
+    pub fn total_charged(env: Env) -> Result<i128, Error> {
+        Ok(storage::load_view(&env)?.total_charged)
     }
 
     /// Extends the instance TTL for a long-lived authorization without changing it.

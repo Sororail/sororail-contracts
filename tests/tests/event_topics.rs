@@ -247,6 +247,8 @@ fn every_public_event_has_a_pinned_topic_name() {
         ("recurring", "Authorized", "authorized"),
         ("recurring", "Cancelled", "cancelled"),
         ("recurring", "Charged", "charged"),
+        ("recurring", "Paused", "paused"),
+        ("recurring", "Resumed", "resumed"),
         ("stream", "Cancelled", "cancelled"),
         ("stream", "Created", "created"),
         ("stream", "Extended", "extended"),

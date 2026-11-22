@@ -56,8 +56,10 @@ Every event emits topics in this order:
 | `recurring` | `Charged` | `charged` | `payee` | `payer`, `amount`, `period_index`, `periods_charged`, `next_chargeable_at`, `remaining` |
 | `recurring` | `Cancelled` | `cancelled` | `cancelled_by` | `periods_charged`, `cancelled_at` |
 | `recurring` | `AmountUpdated` | `amount_updated` | - | `old_amount`, `new_amount`, `effective_from` |
+| `recurring` | `Paused` | `paused` | `payer` | `paused_at` |
+| `recurring` | `Resumed` | `resumed` | `payer` | `resumed_at`, `paused_seconds`, `next_chargeable_at` |
 
-Every contract has at least one event; the five contracts account for 22
+Every contract has at least one event; the five contracts account for 24
 events in total.
 
 `stream` `Created` carries `rate_per_second` and `deposited`, so an indexer can
@@ -82,6 +84,9 @@ rebuild the stream's economics from that event alone. `deposited` always equals
 - **Recurring charges.** `Charged.period_index` is one-based;
   `periods_charged` is the cumulative count, and `remaining` is `null` when the
   authorization is uncapped.
+- **Recurring pause and resume.** `Paused` and `Resumed` are attributed to the
+  `payer`. Paused time shifts the schedule: `Resumed.next_chargeable_at` is the
+  previous due date plus `paused_seconds`.
 - **Recurring amount updates.** `AmountUpdated` is the one event with no
   `#[topic]` address; it is attributed only by its two fixed topics. Its new
   amount becomes effective at `effective_from`, not at the block that emitted

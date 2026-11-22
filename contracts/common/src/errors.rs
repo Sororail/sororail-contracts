@@ -153,6 +153,14 @@ pub enum Error {
     RecurringPeriodNotElapsed = 82,
     /// `max_periods` has been exhausted.
     RecurringExhausted = 83,
+    /// `charge` or `charge_up_to` called while the authorization is paused, or
+    /// `pause` called on one that is already paused.
+    RecurringPaused = 84,
+    /// `resume` called on an authorization that is not paused.
+    RecurringNotPaused = 85,
+    /// `authorize` called when the payer's token allowance to this contract is
+    /// below the cap or one period amount.
+    RecurringInsufficientAllowance = 86,
 
     // ----- batch_payout: 100–119 -----
     /// The recipient list was empty.

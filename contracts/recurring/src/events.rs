@@ -56,3 +56,25 @@ pub struct AmountUpdated {
     /// The timestamp at which the new amount becomes effective.
     pub effective_from: u64,
 }
+
+/// The payer paused the authorization; no charge can be taken until `resume`.
+#[contractevent(topics = ["recurring", "paused"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Paused {
+    #[topic]
+    pub payer: Address,
+    pub paused_at: u64,
+}
+
+/// The payer resumed a paused authorization.
+#[contractevent(topics = ["recurring", "resumed"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Resumed {
+    #[topic]
+    pub payer: Address,
+    pub resumed_at: u64,
+    /// How long the authorization was paused, in seconds.
+    pub paused_seconds: u64,
+    /// The schedule after shifting by `paused_seconds`.
+    pub next_chargeable_at: u64,
+}
