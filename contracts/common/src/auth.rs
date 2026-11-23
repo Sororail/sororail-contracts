@@ -26,6 +26,15 @@ pub fn require(cond: bool, err: Error) -> Result<(), Error> {
     }
 }
 
+/// Errors with [`Error::IdenticalParties`] when `a` and `b` are the same address.
+///
+/// Use it wherever two parties of a transfer (or a party and the contract
+/// itself) must differ, so every entry point spells the check the same way.
+#[inline]
+pub fn require_distinct(a: &Address, b: &Address) -> Result<(), Error> {
+    require(a != b, Error::IdenticalParties)
+}
+
 /// Requires that `caller` is `expected`, then requires its authorization.
 pub fn require_auth_as(caller: &Address, expected: &Address) -> Result<(), Error> {
     require(caller == expected, Error::Unauthorized)?;

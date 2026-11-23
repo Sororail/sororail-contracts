@@ -448,3 +448,30 @@ fn create_requires_the_senders_authorization() {
         &true,
     );
 }
+
+/// #395: a stream whose token is the stream contract itself is refused before
+/// authorization is requested or any transfer is attempted, and leaves no
+/// stream behind.
+#[test]
+fn create_rejects_the_stream_contract_as_its_own_token() {
+    let te = TestEnv::at(START);
+    let env = te.env().clone();
+    let sender = te.make_address();
+    let recipient = te.make_address();
+    let client = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+
+    assert_eq!(
+        client.try_create(
+            &sender,
+            &recipient,
+            &client.address,
+            &RATE,
+            &START,
+            &STOP,
+            &true
+        ),
+        Err(Ok(Error::IdenticalParties))
+    );
+    assert!(env.auths().is_empty(), "no authorization may be requested");
+    assert_eq!(client.try_get(), Err(Ok(Error::NotInitialized)));
+}

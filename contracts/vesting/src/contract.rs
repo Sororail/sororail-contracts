@@ -55,9 +55,7 @@ impl VestingContract {
         if storage::is_initialized(&env) {
             return Err(Error::AlreadyInitialized);
         }
-        if grantor == beneficiary {
-            return Err(Error::IdenticalParties);
-        }
+        auth::require_distinct(&grantor, &beneficiary)?;
         math::require_positive(total)?;
         if duration == 0 {
             return Err(Error::InvalidDuration);
@@ -210,9 +208,8 @@ impl VestingContract {
             return Err(Error::VestingRevoked);
         }
         grant.beneficiary.require_auth();
-        if new_beneficiary == grant.beneficiary || new_beneficiary == grant.grantor {
-            return Err(Error::IdenticalParties);
-        }
+        auth::require_distinct(&new_beneficiary, &grant.beneficiary)?;
+        auth::require_distinct(&new_beneficiary, &grant.grantor)?;
 
         let from = grant.beneficiary.clone();
         grant.beneficiary = new_beneficiary.clone();

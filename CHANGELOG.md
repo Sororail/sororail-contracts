@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make docs-errors` generates the shared error-code table from Rust enum
   documentation; `make check-error-docs` now diffs the complete generated output
   to prevent stale descriptions as well as stale ABI numbers (#369).
+- Shared checked math helpers: `mul_div_ceil` for non-negative round-up arithmetic, `Rounding::{Down, Up, Nearest}` with `mul_div_with`, and `max`/`clamp` for bounds validation (#363, #364, #365).
+- Shared `no_std` time helpers `end_of` (checked `u64` addition) and `elapsed` (zero for reversed timestamps), without migrating existing contract callers (#367).
 
 - `Fuzz smoke` workflow (`.github/workflows/fuzz.yml`) runs every cargo-fuzz target for 60 seconds weekly and on manual dispatch, without gating pull requests, and uploads crash inputs as an artifact (#371). Its first run caught the `fuzz_mul_div` oracle expecting `DivisionByZero` for `d == 0` even when `a * b` overflows first; the oracle now follows `mul_div`'s documented multiply-then-divide order.
 

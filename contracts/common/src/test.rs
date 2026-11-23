@@ -224,7 +224,7 @@ fn error_discriminants_match_the_published_abi_table() {
         (Error::EscrowArbiterNotNeutral, 27),
         (Error::EscrowNoDisputeTimeout, 28),
         (Error::EscrowDisputeTimeoutNotReached, 29),
-         (Error::EscrowBalanceMismatch, 30),
+        (Error::EscrowBalanceMismatch, 30),
         (Error::StreamNotFound, 40),
         (Error::StreamCancelled, 41),
         (Error::StreamNotCancellable, 42),
@@ -282,7 +282,7 @@ fn error_discriminants_are_unique() {
         Error::EscrowArbiterNotNeutral as u32,
         Error::EscrowNoDisputeTimeout as u32,
         Error::EscrowDisputeTimeoutNotReached as u32,
-         Error::EscrowBalanceMismatch as u32,
+        Error::EscrowBalanceMismatch as u32,
         Error::StreamNotFound as u32,
         Error::StreamCancelled as u32,
         Error::StreamNotCancellable as u32,
@@ -336,6 +336,20 @@ fn require_with_false_condition_errors_with_the_given_variant() {
         auth::require(false, Error::EscrowClosed),
         Err(Error::EscrowClosed)
     );
+}
+
+#[test]
+fn require_distinct_rejects_identical_addresses() {
+    let env = Env::default();
+    let a = Address::generate(&env);
+    let b = Address::generate(&env);
+    assert_eq!(auth::require_distinct(&a, &a), Err(Error::IdenticalParties));
+    assert_eq!(
+        auth::require_distinct(&a, &a.clone()),
+        Err(Error::IdenticalParties)
+    );
+    assert_eq!(auth::require_distinct(&a, &b), Ok(()));
+    assert_eq!(auth::require_distinct(&b, &a), Ok(()));
 }
 
 #[test]
@@ -502,4 +516,32 @@ mod storage_tests {
             assert_eq!(load(&env), Err(Error::NotInitialized));
         });
     }
+}
+
+// ---------------------------------------------------------------- Error::as_str (#368)
+
+#[test]
+fn error_as_str_names_the_variant() {
+    assert_eq!(Error::Overflow.as_str(), "Overflow");
+    assert_eq!(Error::IdenticalParties.as_str(), "IdenticalParties");
+    assert_eq!(
+        Error::BatchRecipientIsContract.as_str(),
+        "BatchRecipientIsContract"
+    );
+}
+
+/// Every code in the ABI range maps back to a variant whose `as_str` matches
+/// its `Debug` name, so a variant added without an `as_str` arm cannot compile
+/// (the match is exhaustive) and a misspelt arm fails here.
+#[test]
+fn error_as_str_matches_the_debug_name_of_every_variant() {
+    let mut seen = 0;
+    for code in 1u32..=119 {
+        let Ok(variant) = Error::try_from(soroban_sdk::Error::from_contract_error(code)) else {
+            continue;
+        };
+        assert_eq!(variant.as_str(), std::format!("{variant:?}"), "code {code}");
+        seen += 1;
+    }
+    assert_eq!(seen, 46, "update this count when adding a variant");
 }

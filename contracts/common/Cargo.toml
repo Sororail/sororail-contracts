@@ -16,7 +16,10 @@ doctest = true
 # (token minting, address generation, ledger time control). Depend on this
 # feature in the `[dev-dependencies]` section of every contract that uses it.
 # Never enabled in production builds.
-testutils = ["soroban-sdk/testutils", "dep:proptest"]
+testutils = ["soroban-sdk/testutils", "dep:proptest", "std"]
+# Host-only helpers such as `Error::as_str()`. Off by default so contract wasm
+# builds stay free of the variant-name string table.
+std = []
 
 [dependencies]
 soroban-sdk = { workspace = true }
