@@ -95,6 +95,42 @@ pub fn mul_div(a: i128, b: i128, d: i128) -> Result<i128, Error> {
     div(mul(a, b)?, d)
 }
 
+/// `ceil(a * b / d)`, rounded up (toward positive infinity) for non-negative
+/// operands and a strictly positive divisor.
+///
+/// Unlike [`mul_div`], which truncates toward zero, `mul_div_ceil` rounds any
+/// non-zero remainder up by one unit. Uses checked arithmetic throughout and
+/// computes the ceiling via quotient and remainder (`prod / d + (prod % d != 0)`)
+/// so `a * b` near `i128::MAX` does not spuriously overflow on `+ (d - 1)`.
+///
+/// Rejects negative operands (`a < 0`, `b < 0`, or `d < 0`) with
+/// [`Error::InvalidAmount`] and `d == 0` with [`Error::DivisionByZero`].
+///
+/// # Examples
+///
+/// ```
+/// use sororail_common::math;
+///
+/// assert_eq!(math::mul_div_ceil(7, 1, 2), Ok(4));
+/// assert_eq!(math::mul_div(7, 1, 2), Ok(3));
+/// ```
+pub fn mul_div_ceil(a: i128, b: i128, d: i128) -> Result<i128, Error> {
+    if d == 0 {
+        return Err(Error::DivisionByZero);
+    }
+    require_non_negative(a)?;
+    require_non_negative(b)?;
+    require_positive(d)?;
+    let prod = mul(a, b)?;
+    let q = div(prod, d)?;
+    let rem = prod.checked_rem(d).ok_or(Error::Overflow)?;
+    if rem != 0 {
+        add(q, 1)
+    } else {
+        Ok(q)
+    }
+}
+
 /// `amount * bps / 10000`, rounded toward zero.
 ///
 /// Currently used only by `escrow::resolve`. See module docs for rationale.

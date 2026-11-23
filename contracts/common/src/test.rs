@@ -62,6 +62,20 @@ fn div_rounds_toward_zero() {
 }
 
 #[test]
+fn mul_div_ceil_rounds_up_and_validates_inputs() {
+    assert_eq!(math::mul_div_ceil(7, 1, 2), Ok(4));
+    assert_eq!(math::mul_div(7, 1, 2), Ok(3));
+    assert_eq!(math::mul_div_ceil(6, 1, 2), Ok(3));
+    assert_eq!(math::mul_div_ceil(0, 99, 5), Ok(0));
+    assert_eq!(math::mul_div_ceil(i128::MAX, 1, 1), Ok(i128::MAX));
+    assert_eq!(math::mul_div_ceil(i128::MAX, 2, 2), Err(Error::Overflow));
+    assert_eq!(math::mul_div_ceil(10, 1, 0), Err(Error::DivisionByZero));
+    assert_eq!(math::mul_div_ceil(-1, 1, 2), Err(Error::InvalidAmount));
+    assert_eq!(math::mul_div_ceil(1, -1, 2), Err(Error::InvalidAmount));
+    assert_eq!(math::mul_div_ceil(1, 1, -2), Err(Error::InvalidAmount));
+}
+
+#[test]
 fn mul_div_reports_overflow_rather_than_truncating() {
     assert_eq!(math::mul_div(100, 50, 200), Ok(25));
     // Rounds toward zero, never up.
