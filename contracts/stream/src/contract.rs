@@ -43,6 +43,10 @@ impl StreamContract {
             return Err(Error::AlreadyInitialized);
         }
         auth::require_distinct(&sender, &recipient)?;
+        // A stream that pays in its own address would fail confusingly at the
+        // first transfer (#395). Same variant as `withdraw_to` naming this
+        // contract: the contract itself may not take part in its own flow.
+        auth::require_distinct(&token, &env.current_contract_address())?;
         math::require_positive(rate_per_second)?;
         if stop <= start {
             return Err(Error::InvalidTimeRange);
