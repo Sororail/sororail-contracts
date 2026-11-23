@@ -1,5 +1,5 @@
 use soroban_sdk::{contract, contractimpl, token, xdr::ToXdr, Address, BytesN, Env, Vec};
-use sororail_common::{math, Error};
+use sororail_common::{auth, math, Error};
 
 use crate::{
     events,
@@ -45,9 +45,7 @@ impl BatchPayoutContract {
 
         let mut total: i128 = 0;
         for payment in recipients.iter() {
-            if payment.to == contract_address {
-                return Err(Error::IdenticalParties);
-            }
+            auth::require_distinct(&payment.to, &contract_address)?;
             if only_eoa && is_contract_addr(&env, &payment.to) {
                 return Err(Error::BatchRecipientIsContract);
             }
@@ -217,9 +215,7 @@ impl BatchPayoutContract {
 
         let mut bps_sum: u32 = 0;
         for (to, bps) in shares.iter() {
-            if to == contract_address {
-                return Err(Error::IdenticalParties);
-            }
+            auth::require_distinct(&to, &contract_address)?;
             if only_eoa && is_contract_addr(&env, &to) {
                 return Err(Error::BatchRecipientIsContract);
             }
@@ -285,9 +281,7 @@ impl BatchPayoutContract {
 
         let mut total: i128 = 0;
         for payment in payments.iter() {
-            if payment.to == contract_address {
-                return Err(Error::IdenticalParties);
-            }
+            auth::require_distinct(&payment.to, &contract_address)?;
             if only_eoa && is_contract_addr(&env, &payment.to) {
                 return Err(Error::BatchRecipientIsContract);
             }
@@ -333,9 +327,7 @@ impl BatchPayoutContract {
         let contract_address = env.current_contract_address();
         let mut total: i128 = 0;
         for payment in recipients.iter() {
-            if payment.to == contract_address {
-                return Err(Error::IdenticalParties);
-            }
+            auth::require_distinct(&payment.to, &contract_address)?;
             if only_eoa && is_contract_addr(&env, &payment.to) {
                 return Err(Error::BatchRecipientIsContract);
             }
@@ -366,9 +358,7 @@ impl BatchPayoutContract {
     fn check_recipients(env: &Env, recipients: &Vec<Address>, only_eoa: bool) -> Result<(), Error> {
         let contract_address = env.current_contract_address();
         for to in recipients.iter() {
-            if to == contract_address {
-                return Err(Error::IdenticalParties);
-            }
+            auth::require_distinct(&to, &contract_address)?;
             if only_eoa && is_contract_addr(env, &to) {
                 return Err(Error::BatchRecipientIsContract);
             }

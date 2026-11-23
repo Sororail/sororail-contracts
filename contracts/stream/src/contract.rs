@@ -42,9 +42,11 @@ impl StreamContract {
         if storage::is_initialized(&env) {
             return Err(Error::AlreadyInitialized);
         }
-        if sender == recipient {
-            return Err(Error::IdenticalParties);
-        }
+        auth::require_distinct(&sender, &recipient)?;
+        // A stream that pays in its own address would fail confusingly at the
+        // first transfer (#395). Same variant as `withdraw_to` naming this
+        // contract: the contract itself may not take part in its own flow.
+        auth::require_distinct(&token, &env.current_contract_address())?;
         math::require_positive(rate_per_second)?;
         if stop <= start {
             return Err(Error::InvalidTimeRange);
@@ -113,9 +115,7 @@ impl StreamContract {
         destination: Address,
         amount: Option<i128>,
     ) -> Result<i128, Error> {
-        if destination == env.current_contract_address() {
-            return Err(Error::IdenticalParties);
-        }
+        auth::require_distinct(&destination, &env.current_contract_address())?;
         let stream = storage::load(&env)?;
         Self::withdraw_into(&env, stream, &destination, amount)
     }
@@ -305,9 +305,7 @@ impl StreamContract {
         }
         stream.recipient.require_auth();
 
-        if new_recipient == stream.recipient {
-            return Err(Error::IdenticalParties);
-        }
+        auth::require_distinct(&new_recipient, &stream.recipient)?;
 
         let old_recipient = stream.recipient.clone();
         stream.recipient = new_recipient.clone();

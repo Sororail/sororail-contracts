@@ -58,6 +58,7 @@ Failures use the shared `Error` enum in
 | `AlreadyInitialized` | `create` on an initialized instance |
 | `NotInitialized` | any entry point before `create` |
 | `IdenticalParties` | `create` with `sender == recipient` |
+| `IdenticalParties` | `create` with `token` set to the stream contract's own address |
 | `InvalidAmount` | non-positive rate or withdrawal; `top_up` not a multiple of the rate |
 | `IdenticalParties` | `withdraw_to` naming the stream contract itself as `destination` |
 | `InvalidTimeRange` | `create` with `stop <= start`; `top_up` overflowing `stop` |

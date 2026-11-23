@@ -23,3 +23,10 @@ path = "fuzz_targets/fuzz_mul_div.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_split_bps"
+path = "fuzz_targets/fuzz_split_bps.rs"
+test = false
+doc = false
+bench = false
