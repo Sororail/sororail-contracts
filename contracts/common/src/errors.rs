@@ -182,3 +182,66 @@ pub enum Error {
     /// `execute_many_tokens`, or `preview` and any recipient is a contract.
     BatchRecipientIsContract = 103,
 }
+
+/// Variant names for host-side tooling (#368).
+///
+/// Compiled only for tests and the `std` feature (which `testutils` enables),
+/// so the default wasm build carries no string table.
+#[cfg(any(test, feature = "std"))]
+impl Error {
+    /// The variant's name, exactly as written in the enum (e.g. `"Overflow"`).
+    ///
+    /// Test helpers use it so a failing assertion names the error instead of
+    /// printing only its numeric code; docs tooling can use it to render the
+    /// error table.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Error::AlreadyInitialized => "AlreadyInitialized",
+            Error::NotInitialized => "NotInitialized",
+            Error::Unauthorized => "Unauthorized",
+            Error::InvalidAmount => "InvalidAmount",
+            Error::InvalidTimeRange => "InvalidTimeRange",
+            Error::Overflow => "Overflow",
+            Error::Underflow => "Underflow",
+            Error::DivisionByZero => "DivisionByZero",
+            Error::InvalidBasisPoints => "InvalidBasisPoints",
+            Error::InvalidState => "InvalidState",
+            Error::DeadlineNotReached => "DeadlineNotReached",
+            Error::DeadlinePassed => "DeadlinePassed",
+            Error::InsufficientBalance => "InsufficientBalance",
+            Error::InvalidDuration => "InvalidDuration",
+            Error::IdenticalParties => "IdenticalParties",
+            Error::EscrowNotFundable => "EscrowNotFundable",
+            Error::EscrowNotFunded => "EscrowNotFunded",
+            Error::EscrowClosed => "EscrowClosed",
+            Error::EscrowNoArbiter => "EscrowNoArbiter",
+            Error::EscrowNotDisputed => "EscrowNotDisputed",
+            Error::EscrowAlreadyDisputed => "EscrowAlreadyDisputed",
+            Error::EscrowNotCancellable => "EscrowNotCancellable",
+            Error::EscrowArbiterNotNeutral => "EscrowArbiterNotNeutral",
+            Error::EscrowNoDisputeTimeout => "EscrowNoDisputeTimeout",
+            Error::EscrowDisputeTimeoutNotReached => "EscrowDisputeTimeoutNotReached",
+            Error::EscrowBalanceMismatch => "EscrowBalanceMismatch",
+            Error::StreamNotFound => "StreamNotFound",
+            Error::StreamCancelled => "StreamCancelled",
+            Error::StreamNotCancellable => "StreamNotCancellable",
+            Error::StreamInsufficientAccrued => "StreamInsufficientAccrued",
+            Error::StreamNotExtendable => "StreamNotExtendable",
+            Error::VestingNotFound => "VestingNotFound",
+            Error::VestingCliffNotReached => "VestingCliffNotReached",
+            Error::VestingNotRevocable => "VestingNotRevocable",
+            Error::VestingRevoked => "VestingRevoked",
+            Error::VestingCliffAfterEnd => "VestingCliffAfterEnd",
+            Error::VestingNothingToClaim => "VestingNothingToClaim",
+            Error::VestingScheduleOverflow => "VestingScheduleOverflow",
+            Error::VestingTooManyCheckpoints => "VestingTooManyCheckpoints",
+            Error::RecurringNotFound => "RecurringNotFound",
+            Error::RecurringCancelled => "RecurringCancelled",
+            Error::RecurringPeriodNotElapsed => "RecurringPeriodNotElapsed",
+            Error::RecurringExhausted => "RecurringExhausted",
+            Error::BatchEmpty => "BatchEmpty",
+            Error::BatchTooLarge => "BatchTooLarge",
+            Error::BatchRecipientIsContract => "BatchRecipientIsContract",
+        }
+    }
+}

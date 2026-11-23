@@ -37,6 +37,8 @@ use soroban_sdk::{
     Address, Env,
 };
 
+use crate::Error;
+
 /// A pre-configured test environment with `mock_all_auths` already enabled.
 ///
 /// Create one per test (or per `Fixture::new` call), then use the helper
@@ -220,6 +222,50 @@ pub fn assert_conserved(token: &TokenClient<'_>, participants: &[Address], expec
         actual, expected_total,
         "token balances for {participants:?} do not sum to {expected_total}"
     );
+}
+
+/// Asserts that a generated client's `try_*` call failed with `expected`.
+///
+/// Contract clients return `Result<Result<T, _>, Result<Error, _>>` from
+/// `try_*` calls. A plain `assert_eq!` on that shape prints only numeric
+/// codes; this names both errors via [`Error::as_str`] (#368):
+///
+/// ```text
+/// expected Error::IdenticalParties (15), got Error::InvalidAmount (4)
+/// ```
+///
+/// ```rust,ignore
+/// assert_contract_error(client.try_create(&a, &a, ...), Error::IdenticalParties);
+/// ```
+pub fn assert_contract_error<T: core::fmt::Debug, C: core::fmt::Debug, I: core::fmt::Debug>(
+    result: Result<Result<T, C>, Result<Error, I>>,
+    expected: Error,
+) {
+    match result {
+        Err(Ok(actual)) if actual == expected => {}
+        Err(Ok(actual)) => panic!(
+            "expected Error::{} ({}), got Error::{} ({})",
+            expected.as_str(),
+            expected as u32,
+            actual.as_str(),
+            actual as u32
+        ),
+        Err(Err(invoke)) => panic!(
+            "expected Error::{} ({}), but the call failed outside the contract error type: {invoke:?}",
+            expected.as_str(),
+            expected as u32
+        ),
+        Ok(Ok(value)) => panic!(
+            "expected Error::{} ({}), but the call succeeded with {value:?}",
+            expected.as_str(),
+            expected as u32
+        ),
+        Ok(Err(conversion)) => panic!(
+            "expected Error::{} ({}), but the call succeeded and its result failed to convert: {conversion:?}",
+            expected.as_str(),
+            expected as u32
+        ),
+    }
 }
 
 // ─── Fee-on-transfer mock token (#438) ──────────────────────────────────────
@@ -540,6 +586,28 @@ pub fn deploy_fee_on_transfer_token(env: &Env, fee_bps: u32) -> (Address, Addres
 #[cfg(test)]
 mod helper_smoke {
     use super::*;
+
+    #[test]
+    fn assert_contract_error_accepts_the_expected_error() {
+        let result: Result<Result<(), ()>, Result<Error, ()>> = Err(Ok(Error::IdenticalParties));
+        assert_contract_error(result, Error::IdenticalParties);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "expected Error::IdenticalParties (15), got Error::InvalidAmount (4)"
+    )]
+    fn assert_contract_error_names_both_variants_on_mismatch() {
+        let result: Result<Result<(), ()>, Result<Error, ()>> = Err(Ok(Error::InvalidAmount));
+        assert_contract_error(result, Error::IdenticalParties);
+    }
+
+    #[test]
+    #[should_panic(expected = "expected Error::Overflow (6), but the call succeeded with 7")]
+    fn assert_contract_error_reports_unexpected_success() {
+        let result: Result<Result<i32, ()>, Result<Error, ()>> = Ok(Ok(7));
+        assert_contract_error(result, Error::Overflow);
+    }
 
     #[test]
     fn advance_by_moves_the_clock_forward_by_delta() {
