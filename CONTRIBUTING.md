@@ -207,7 +207,13 @@ crate's `Cargo.toml`):
 cargo install cargo-fuzz
 cd contracts/common/fuzz
 cargo +nightly fuzz run fuzz_mul_div
+cargo +nightly fuzz run fuzz_split_bps -- -max_total_time=30
 ```
+
+| Target | Property |
+| --- | --- |
+| `fuzz_mul_div` | `mul_div` matches a `BigInt` reference and only returns its documented errors |
+| `fuzz_split_bps` | `split_bps` halves always sum to `amount`, the first half is exactly `amount * bps / 10000` truncated, both halves are non-negative for a non-negative `amount`, and out-of-range `bps` or an overflowing product is reported as an error |
 
 Fuzzing is open-ended, so it never gates a pull request. Instead the
 [`Fuzz smoke`](.github/workflows/fuzz.yml) workflow runs every target that
