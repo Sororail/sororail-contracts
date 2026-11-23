@@ -6,12 +6,12 @@
 //!
 //! | Variant | Raised by |
 //! |---|---|
-//! | [`Error::AlreadyInitialized`] | `create` on an initialized instance |
+//! | [`Error::AlreadyInitialized`] | `create` or `preview_create` on an initialized instance |
 //! | [`Error::NotInitialized`] | any entry point before `create` |
-//! | [`Error::IdenticalParties`] | `create` with `sender == recipient` |
-//! | [`Error::InvalidAmount`] | non-positive rate or withdrawal; `top_up` not a multiple of the rate |
-//! | [`Error::InvalidTimeRange`] | `create` with `stop <= start`; `top_up` overflowing `stop` |
-//! | [`Error::Overflow`] | funding or accrual exceeding `i128` |
+//! | [`Error::IdenticalParties`] | `create` or `preview_create` with `sender == recipient` |
+//! | [`Error::InvalidAmount`] | non-positive rate in `create` or `preview_create`, non-positive withdrawal, or `top_up` not a multiple of the rate |
+//! | [`Error::InvalidTimeRange`] | `create` or `preview_create` with `stop <= start`; `top_up` overflowing `stop` |
+//! | [`Error::Overflow`] | funding validation in `create` or `preview_create`, or accrual exceeding `i128` |
 //! | [`Error::StreamCancelled`] | any mutation after cancellation |
 //! | [`Error::StreamNotCancellable`] | `cancel` on a stream created with `cancellable = false` |
 //! | [`Error::StreamInsufficientAccrued`] | `withdraw` for more than has accrued |

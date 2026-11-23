@@ -1,5 +1,144 @@
 use super::*;
 
+// ------------------------------------------------------------------ preview_create
+
+#[test]
+fn preview_create_and_create_return_identical_errors_for_invalid_inputs() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| l.timestamp = START);
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+    let sender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    // Each failed creation must leave the instance uninitialized so the
+    // next case checks the actual input validation, not AlreadyInitialized.
+    for (rate, start, stop, error) in [
+        (0, START, STOP, Error::InvalidAmount),
+        (-1, START, STOP, Error::InvalidAmount),
+        (i128::MIN, START, STOP, Error::InvalidAmount),
+        (RATE, START, START, Error::InvalidTimeRange),
+        (RATE, STOP, START, Error::InvalidTimeRange),
+        (i128::MAX, START, START + 2, Error::Overflow),
+    ] {
+        assert_eq!(
+            c.try_preview_create(&sender, &recipient, &token, &rate, &start, &stop, &true),
+            Err(Ok(error))
+        );
+        assert_eq!(
+            c.try_create(&sender, &recipient, &token, &rate, &start, &stop, &true),
+            Err(Ok(error))
+        );
+    }
+
+    assert_eq!(
+        c.try_preview_create(&sender, &sender, &token, &RATE, &START, &STOP, &true),
+        Err(Ok(Error::IdenticalParties))
+    );
+    assert_eq!(
+        c.try_create(&sender, &sender, &token, &RATE, &START, &STOP, &true),
+        Err(Ok(Error::IdenticalParties))
+    );
+
+    // Error precedence must remain identical for inputs with multiple faults.
+    assert_eq!(
+        c.try_preview_create(&sender, &sender, &token, &0, &STOP, &START, &false),
+        Err(Ok(Error::IdenticalParties))
+    );
+    assert_eq!(
+        c.try_create(&sender, &sender, &token, &0, &STOP, &START, &false),
+        Err(Ok(Error::IdenticalParties))
+    );
+    assert_eq!(c.try_get(), Err(Ok(Error::NotInitialized)));
+}
+
+#[test]
+fn preview_create_quotes_the_exact_deposit_without_mutating_or_authorizing() {
+    let te = TestEnv::at(START);
+    let (token, sender) = te.make_token(MINT);
+    let recipient = te.make_address();
+    let env = te.env().clone();
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+
+    let quoted = c.preview_create(
+        &sender,
+        &recipient,
+        &token.address,
+        &RATE,
+        &START,
+        &STOP,
+        &true,
+    );
+    assert_eq!(quoted, DEPOSITED);
+    assert_eq!(token.balance(&sender), MINT);
+    assert_eq!(token.balance(&c.address), 0);
+    assert_eq!(c.try_get(), Err(Ok(Error::NotInitialized)));
+
+    // Repeated previews are safe. Real creation uses the same amount.
+    assert_eq!(
+        c.preview_create(&sender, &recipient, &token.address, &RATE, &START, &STOP, &false),
+        quoted
+    );
+    c.create(
+        &sender,
+        &recipient,
+        &token.address,
+        &RATE,
+        &START,
+        &STOP,
+        &true,
+    );
+    assert_eq!(c.get().deposited, quoted);
+    assert_eq!(token.balance(&c.address), quoted);
+
+    // An existing instance is rejected by both paths before other checks.
+    assert_eq!(
+        c.try_preview_create(&sender, &sender, &token.address, &0, &STOP, &START, &true),
+        Err(Ok(Error::AlreadyInitialized))
+    );
+    assert_eq!(
+        c.try_create(&sender, &sender, &token.address, &0, &STOP, &START, &true),
+        Err(Ok(Error::AlreadyInitialized))
+    );
+}
+
+#[test]
+fn preview_create_requires_no_sender_signature_or_token_contract() {
+    // Unlike create, preview is permissionless and performs only arithmetic.
+    let env = Env::default();
+    let c = StreamContractClient::new(&env, &env.register(StreamContract, ()));
+    let sender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let nonexistent_token = Address::generate(&env);
+
+    assert_eq!(
+        c.preview_create(
+            &sender,
+            &recipient,
+            &nonexistent_token,
+            &RATE,
+            &START,
+            &STOP,
+            &true,
+        ),
+        DEPOSITED
+    );
+    assert_eq!(
+        c.preview_create(
+            &sender,
+            &recipient,
+            &nonexistent_token,
+            &i128::MAX,
+            &START,
+            &(START + 1),
+            &false,
+        ),
+        i128::MAX
+    );
+    assert_eq!(c.try_get(), Err(Ok(Error::NotInitialized)));
+}
+
 // ------------------------------------------------------------------ create
 
 #[test]

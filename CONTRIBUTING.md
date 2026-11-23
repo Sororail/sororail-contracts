@@ -25,6 +25,20 @@ make check       # fmt-check, lint, test, build, docs and deployment checks
 ```
 
 `make check` mirrors the required CI jobs. Run it before opening a PR.
+
+### Error code documentation
+
+The error reference in `docs/ERRORS.md` is generated from the variants and
+Rust documentation in `contracts/common/src/errors.rs`. After changing the
+shared error enum or its descriptions, run:
+
+```bash
+make docs-errors        # regenerate docs/ERRORS.md
+make check-error-docs  # diff committed docs against generated output
+```
+
+Commit the regenerated reference together with any error changes. CI checks
+that the generated output matches the committed file.
 `make ci` is an alias for `make check` and is what CI itself executes.
 
 The toolchain is pinned in `rust-toolchain.toml`; rustup will honour it

@@ -39,20 +39,8 @@ impl StreamContract {
         stop: u64,
         cancellable: bool,
     ) -> Result<(), Error> {
-        if storage::is_initialized(&env) {
-            return Err(Error::AlreadyInitialized);
-        }
-        if sender == recipient {
-            return Err(Error::IdenticalParties);
-        }
-        math::require_positive(rate_per_second)?;
-        if stop <= start {
-            return Err(Error::InvalidTimeRange);
-        }
-        let deposited = math::mul(
-            rate_per_second,
-            math::sub(i128::from(stop), i128::from(start))?,
-        )?;
+        let deposited =
+            Self::required_deposit(&env, &sender, &recipient, rate_per_second, start, stop)?;
 
         sender.require_auth();
 
@@ -84,6 +72,27 @@ impl StreamContract {
         }
         .publish(&env);
         Ok(())
+    }
+
+    /// Previews the upfront deposit without authorization, token movement,
+    /// state writes or emitted events. Uses exactly the validation applied by
+    /// `create`, including the check for an existing stream and overflow.
+    ///
+    /// The token address and cancellation flag do not change the deposit,
+    /// but remain positional arguments to mirror `create`'s public ABI.
+    #[allow(clippy::too_many_arguments)]
+    pub fn preview_create(
+        env: Env,
+        sender: Address,
+        recipient: Address,
+        token: Address,
+        rate_per_second: i128,
+        start: u64,
+        stop: u64,
+        cancellable: bool,
+    ) -> Result<i128, Error> {
+        let _ = (token, cancellable);
+        Self::required_deposit(&env, &sender, &recipient, rate_per_second, start, stop)
     }
 
     /// Withdraws accrued funds to the recipient.
@@ -324,6 +333,33 @@ impl StreamContract {
 
 // Helpers. Outside `#[contractimpl]` so they are not contract entry points.
 impl StreamContract {
+    /// Shared validation and checked funding arithmetic for `create` and
+    /// `preview_create`. Read-only: does not extend storage TTL or mutate
+    /// balances, contract state or authorization.
+    fn required_deposit(
+        env: &Env,
+        sender: &Address,
+        recipient: &Address,
+        rate_per_second: i128,
+        start: u64,
+        stop: u64,
+    ) -> Result<i128, Error> {
+        if storage::is_initialized(env) {
+            return Err(Error::AlreadyInitialized);
+        }
+        if sender == recipient {
+            return Err(Error::IdenticalParties);
+        }
+        math::require_positive(rate_per_second)?;
+        if stop <= start {
+            return Err(Error::InvalidTimeRange);
+        }
+        math::mul(
+            rate_per_second,
+            math::sub(i128::from(stop), i128::from(start))?,
+        )
+    }
+
     /// The withdrawal shared by `withdraw` and `withdraw_to`: requires the
     /// recipient's authorization, validates `amount` against what has
     /// accrued, records it in `withdrawn`, pays `destination`, and emits

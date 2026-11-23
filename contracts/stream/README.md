@@ -21,6 +21,7 @@ withdrawn + refunded + remaining == deposited
 | Entry point | Caller | Effect |
 | --- | --- | --- |
 | `create` | sender | Records the stream and pulls the full `deposited` amount in. |
+| `preview_create` | anyone | Read-only estimate of the upfront deposit, using exactly the same validation and overflow checks as `create`; no token movement or state changes. |
 | `withdraw` | recipient | Pays out accrued, unwithdrawn funds (all of them if `amount` is `None`). |
 | `withdraw_to` | recipient | Same as `withdraw`, but pays `destination` (for example a treasury or exchange deposit address) in the same transaction. `destination` may not be the stream contract itself. |
 | `cancel` | sender | Ends a cancellable stream; returns unaccrued funds to the sender. Worked examples: [docs/stream-cancel.md](../../docs/stream-cancel.md). |
@@ -34,6 +35,8 @@ withdrawn + refunded + remaining == deposited
 ## Example flow
 
 ```text
+0. client.preview_create(&sender, &recipient, &token, &rate, &start, &stop, &true)
+   -> returns the required deposit without authorizing, funding or storing a stream.
 1. client.create(&sender, &recipient, &token, &rate, &start, &stop, &true)
    -> the contract pulls rate * (stop - start) from the sender.
 2. Time passes. client.balance_of(&recipient) accrues with the ledger timestamp.
@@ -55,12 +58,12 @@ Failures use the shared `Error` enum in
 
 | Variant | Raised by |
 | --- | --- |
-| `AlreadyInitialized` | `create` on an initialized instance |
+| `AlreadyInitialized` | `create` or `preview_create` on an initialized instance |
 | `NotInitialized` | any entry point before `create` |
-| `IdenticalParties` | `create` with `sender == recipient` |
+| `IdenticalParties` | `create` or `preview_create` with `sender == recipient` |
 | `InvalidAmount` | non-positive rate or withdrawal; `top_up` not a multiple of the rate |
 | `IdenticalParties` | `withdraw_to` naming the stream contract itself as `destination` |
-| `InvalidTimeRange` | `create` with `stop <= start`; `top_up` overflowing `stop` |
+| `InvalidTimeRange` | `create` or `preview_create` with `stop <= start`; `top_up` overflowing `stop` |
 | `Overflow` | funding or accrual exceeding `i128` |
 | `StreamCancelled` | any mutation after cancellation |
 | `StreamNotCancellable` | `cancel` on a stream created with `cancellable = false` |

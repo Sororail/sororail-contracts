@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `stream::preview_create` quotes the upfront deposit without authorization,
+  token transfers or storage changes, sharing validation and overflow handling
+  with `create` (#394).
+- `make docs-errors` generates the shared error-code table from Rust enum
+  documentation; `make check-error-docs` now diffs the complete generated output
+  to prevent stale descriptions as well as stale ABI numbers (#369).
+
 - `Fuzz smoke` workflow (`.github/workflows/fuzz.yml`) runs every cargo-fuzz target for 60 seconds weekly and on manual dispatch, without gating pull requests, and uploads crash inputs as an artifact (#371). Its first run caught the `fuzz_mul_div` oracle expecting `DivisionByZero` for `d == 0` even when `a * b` overflows first; the oracle now follows `mul_div`'s documented multiply-then-divide order.
 
 - `stream::withdraw_to(destination, amount)` withdraws accrued funds like `withdraw` but pays them to `destination` in the same transaction. It requires the recipient's authorization, shares validation, accrual and accounting with `withdraw` through one private helper, and rejects the stream contract itself as a destination with `IdenticalParties` (#391).
