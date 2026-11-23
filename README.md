@@ -104,6 +104,20 @@ through `sororail_common::math`, which returns an error on overflow rather than
 producing a wrong-but-plausible balance. `overflow-checks` is on in release
 builds too.
 
+The common crate also provides explicit checked rounding with
+`math::mul_div_with(Rounding::{Down, Up, Nearest}, a, b, d)`, along with
+`math::mul_div_ceil`, `math::max`, and `math::clamp`. `Down` preserves the
+existing signed, toward-zero behavior of `mul_div`; `Up` rejects negative
+operands and rounds non-negative amounts upward; `Nearest` rounds exact
+halves away from zero, including for negative values. A checked intermediate
+product may overflow even if the mathematical quotient would fit.
+
+For example, `mul_div(7, 1, 2)` returns `3` while
+`mul_div_ceil(7, 1, 2)` returns `4`. A separate `time` module provides
+`end_of(start, duration)` with a checked `u64` sum and
+`elapsed(from, to)`, which returns zero for reversed timestamps.
+These helpers do not change existing contract entry points.
+
 **Error numbers are ABI.** `sororail_common::errors::Error` assigns each
 contract a documented numeric range. A released variant is never renumbered and
 never removed — clients decode failures by integer.

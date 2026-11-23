@@ -91,8 +91,109 @@ pub fn div(a: i128, b: i128) -> Result<i128, Error> {
 ///
 /// assert_eq!(math::mul_div(1_000, 25, 100), Ok(250));
 /// ```
+#[inline]
 pub fn mul_div(a: i128, b: i128, d: i128) -> Result<i128, Error> {
-    div(mul(a, b)?, d)
+    mul_div_with(Rounding::Down, a, b, d)
+}
+
+/// Determines how a quotient is rounded by [`mul_div_with`].
+///
+/// `Down` preserves the existing truncation toward zero (including signed
+/// inputs). `Up` rounds toward positive infinity for non-negative inputs and
+/// rejects negative operands with [`Error::InvalidAmount`]. `Nearest`
+/// rounds to the closest integer; exact halves round **away from zero**.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Rounding {
+    /// Truncate the quotient toward zero, preserving [`mul_div`] behavior.
+    Down,
+    /// Round a non-negative quotient upward when a remainder exists.
+    Up,
+    /// Round to the closest integer, with exact halves away from zero.
+    Nearest,
+}
+
+/// Computes `a * b / d` with explicit rounding and checked `i128` arithmetic.
+///
+/// The product is checked *before* division, so a product that overflows
+/// returns [`Error::Overflow`] even when the mathematical quotient would fit.
+/// Division by zero returns [`Error::DivisionByZero`].
+///
+/// `Down` truncates toward zero for both positive and negative operands.
+/// `Up` is intended for unsigned amounts represented as `i128`: it rejects
+/// negative `a`, `b`, or `d` with [`Error::InvalidAmount`]. This keeps
+/// the existing signed behavior of [`mul_div`] intact while making the
+/// protocol-favouring [`mul_div_ceil`] safe for non-negative money amounts.
+/// `Nearest` supports signed values and rounds exact halves away from zero.
+///
+/// No `product + denominator - 1` or absolute-value conversion to `i128`
+/// is performed, including for `i128::MIN`.
+///
+/// # Examples
+///
+/// ```
+/// use sororail_common::math::{mul_div_with, Rounding};
+///
+/// assert_eq!(mul_div_with(Rounding::Down, 7, 1, 2), Ok(3));
+/// assert_eq!(mul_div_with(Rounding::Up, 7, 1, 2), Ok(4));
+/// assert_eq!(mul_div_with(Rounding::Nearest, -7, 1, 2), Ok(-4));
+/// ```
+pub fn mul_div_with(rounding: Rounding, a: i128, b: i128, d: i128) -> Result<i128, Error> {
+    if rounding == Rounding::Up && (a < 0 || b < 0 || d < 0) {
+        return Err(Error::InvalidAmount);
+    }
+
+    // This preserves the evaluation order of mul_div: product overflow wins
+    // over a simultaneous zero denominator (also required by the fuzz oracle).
+    let product = mul(a, b)?;
+    let quotient = div(product, d)?;
+    if rounding == Rounding::Down {
+        return Ok(quotient);
+    }
+
+    // `div` above has already excluded zero denominators and MIN / -1.
+    let remainder = product.checked_rem(d).ok_or(Error::Overflow)?;
+    if remainder == 0 {
+        return Ok(quotient);
+    }
+
+    match rounding {
+        Rounding::Down => Ok(quotient),
+        Rounding::Up => quotient.checked_add(1).ok_or(Error::Overflow),
+        Rounding::Nearest => {
+            // unsigned_abs handles i128::MIN without overflowing.
+            let half = d.unsigned_abs().div_ceil(2);
+            if remainder.unsigned_abs() < half {
+                return Ok(quotient);
+            }
+            // The mathematical quotient is negative when the signs differ.
+            if (product < 0) != (d < 0) {
+                quotient.checked_sub(1).ok_or(Error::Overflow)
+            } else {
+                quotient.checked_add(1).ok_or(Error::Overflow)
+            }
+        }
+    }
+}
+
+/// `a * b / d` rounded upward for non-negative amounts.
+///
+/// Unlike [`mul_div`], negative operands are rejected with
+/// [`Error::InvalidAmount`]. A zero denominator yields
+/// [`Error::DivisionByZero`], and an overflowing intermediate product
+/// yields [`Error::Overflow`]. Uses checked arithmetic without the
+/// overflow-prone `(a * b + d - 1) / d` idiom.
+///
+/// # Examples
+///
+/// ```
+/// use sororail_common::math;
+///
+/// assert_eq!(math::mul_div(7, 1, 2), Ok(3));
+/// assert_eq!(math::mul_div_ceil(7, 1, 2), Ok(4));
+/// ```
+#[inline]
+pub fn mul_div_ceil(a: i128, b: i128, d: i128) -> Result<i128, Error> {
+    mul_div_with(Rounding::Up, a, b, d)
 }
 
 /// `amount * bps / 10000`, rounded toward zero.
@@ -165,6 +266,138 @@ pub fn min(a: i128, b: i128) -> i128 {
         a
     } else {
         b
+    }
+}
+
+/// Returns the larger of two values.
+#[inline]
+pub fn max(a: i128, b: i128) -> i128 {
+    if a > b {
+        a
+    } else {
+        b
+    }
+}
+
+/// Clamps `value` to the inclusive range `lo..=hi`.
+///
+/// Returns [`Error::InvalidAmount`] if the bounds are inverted, even when
+/// `value` happens to equal one of them.
+///
+/// # Examples
+///
+/// ```
+/// use sororail_common::math;
+///
+/// assert_eq!(math::clamp(12, 0, 10), Ok(10));
+/// assert_eq!(math::clamp(-3, 0, 10), Ok(0));
+/// ```
+#[inline]
+pub fn clamp(value: i128, lo: i128, hi: i128) -> Result<i128, Error> {
+    if lo > hi {
+        return Err(Error::InvalidAmount);
+    }
+    Ok(min(max(value, lo), hi))
+}
+
+#[cfg(test)]
+mod rounding_and_bounds_tests {
+    // Test fixtures use known-safe constants for boundary comparisons.
+    #![allow(clippy::arithmetic_side_effects)]
+
+    use super::*;
+
+    #[test]
+    fn rounding_modes_cover_below_exact_and_above_half() {
+        // 5/4 = 1.25, 6/4 = 1.5, 7/4 = 1.75.
+        for (numerator, down, up, nearest) in [
+            (5, 1, 2, 1),
+            (6, 1, 2, 2),
+            (7, 1, 2, 2),
+            (8, 2, 2, 2),
+            (0, 0, 0, 0),
+        ] {
+            assert_eq!(mul_div_with(Rounding::Down, numerator, 1, 4), Ok(down));
+            assert_eq!(mul_div_with(Rounding::Up, numerator, 1, 4), Ok(up));
+            assert_eq!(
+                mul_div_with(Rounding::Nearest, numerator, 1, 4),
+                Ok(nearest)
+            );
+        }
+    }
+
+    #[test]
+    fn nearest_half_away_from_zero_applies_to_negative_inputs() {
+        for (numerator, rounded) in [(-5, -1), (-6, -2), (-7, -2), (-8, -2)] {
+            assert_eq!(
+                mul_div_with(Rounding::Nearest, numerator, 1, 4),
+                Ok(rounded)
+            );
+        }
+        assert_eq!(mul_div_with(Rounding::Nearest, 7, 1, -4), Ok(-2));
+        assert_eq!(mul_div_with(Rounding::Nearest, -7, 1, -4), Ok(2));
+        assert_eq!(mul_div_with(Rounding::Nearest, i128::MIN, 1, i128::MIN), Ok(1));
+    }
+
+    #[test]
+    fn rounding_up_matches_ceil_without_leaking_an_extra_unit() {
+        assert_eq!(mul_div_ceil(7, 1, 2), Ok(4));
+        assert_eq!(mul_div(7, 1, 2), Ok(3));
+        assert_eq!(mul_div_ceil(6, 1, 2), Ok(3));
+        assert_eq!(mul_div_ceil(0, 19, 3), Ok(0));
+        assert_eq!(mul_div_ceil(i128::MAX, 1, 1), Ok(i128::MAX));
+        assert_eq!(mul_div_ceil(i128::MAX, 1, 2), Ok(i128::MAX / 2 + 1));
+    }
+
+    #[test]
+    fn ceiling_rejects_negative_inputs_and_invalid_divisors() {
+        for (a, b, d) in [(-1, 2, 3), (1, -2, 3), (1, 2, -3)] {
+            assert_eq!(mul_div_ceil(a, b, d), Err(Error::InvalidAmount));
+        }
+        assert_eq!(mul_div_ceil(7, 1, 0), Err(Error::DivisionByZero));
+        assert_eq!(mul_div_with(Rounding::Nearest, 7, 1, 0), Err(Error::DivisionByZero));
+        // Keep the documented multiply-then-divide error order.
+        assert_eq!(mul_div(i128::MAX, 2, 0), Err(Error::Overflow));
+        assert_eq!(mul_div_ceil(i128::MAX, 2, 0), Err(Error::Overflow));
+        assert_eq!(mul_div_ceil(i128::MAX, 2, 2), Err(Error::Overflow));
+        assert_eq!(
+            mul_div_with(Rounding::Nearest, i128::MIN, 1, -1),
+            Err(Error::Overflow)
+        );
+        // Preserve the original signed mul_div semantics, including i128::MIN.
+        assert_eq!(mul_div(-7, 1, 2), Ok(-3));
+    }
+
+    #[test]
+    fn max_is_table_driven_for_equal_and_boundary_values() {
+        for (a, b, expected) in [
+            (3, 9, 9),
+            (9, 3, 9),
+            (5, 5, 5),
+            (-2, -9, -2),
+            (i128::MIN, i128::MAX, i128::MAX),
+            (i128::MAX, i128::MIN, i128::MAX),
+        ] {
+            assert_eq!(max(a, b), expected, "max({a}, {b})");
+        }
+    }
+
+    #[test]
+    fn clamp_is_table_driven_for_equal_boundary_and_inverted_ranges() {
+        for (value, lo, hi, expected) in [
+            (5, 0, 10, Ok(5)),
+            (-1, 0, 10, Ok(0)),
+            (11, 0, 10, Ok(10)),
+            (0, 0, 10, Ok(0)),
+            (10, 0, 10, Ok(10)),
+            (5, 5, 5, Ok(5)),
+            (i128::MIN, i128::MIN, i128::MAX, Ok(i128::MIN)),
+            (i128::MAX, i128::MIN, i128::MAX, Ok(i128::MAX)),
+            (5, 6, 4, Err(Error::InvalidAmount)),
+            (5, i128::MAX, i128::MIN, Err(Error::InvalidAmount)),
+        ] {
+            assert_eq!(clamp(value, lo, hi), expected);
+        }
     }
 }
 

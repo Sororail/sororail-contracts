@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Shared checked math helpers: `mul_div_ceil` for non-negative round-up arithmetic, `Rounding::{Down, Up, Nearest}` with `mul_div_with`, and `max`/`clamp` for bounds validation (#363, #364, #365).
+- Shared `no_std` time helpers `end_of` (checked `u64` addition) and `elapsed` (zero for reversed timestamps), without migrating existing contract callers (#367).
+
 - `Fuzz smoke` workflow (`.github/workflows/fuzz.yml`) runs every cargo-fuzz target for 60 seconds weekly and on manual dispatch, without gating pull requests, and uploads crash inputs as an artifact (#371). Its first run caught the `fuzz_mul_div` oracle expecting `DivisionByZero` for `d == 0` even when `a * b` overflows first; the oracle now follows `mul_div`'s documented multiply-then-divide order.
 
 - `stream::withdraw_to(destination, amount)` withdraws accrued funds like `withdraw` but pays them to `destination` in the same transaction. It requires the recipient's authorization, shares validation, accrual and accounting with `withdraw` through one private helper, and rejects the stream contract itself as a destination with `IdenticalParties` (#391).

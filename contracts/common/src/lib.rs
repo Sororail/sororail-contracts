@@ -16,7 +16,8 @@ across `escrow`, `stream`, `vesting`, `recurring` and `batch_payout`:
 - [`storage`] -- TTL constants and bump helpers, because Soroban state expires
 - [`auth`] -- authorization guards that check membership before `require_auth`
 - [`events`] -- a single topic scheme every contract emits under
-- [`math`] -- checked money math that errors instead of saturating
+- [`math`] -- checked money math with explicit rounding and clamping
+- [`time`] -- checked ledger time arithmetic without a network dependency
 "#]
 
 #[cfg(test)]
@@ -33,6 +34,7 @@ pub mod errors;
 pub mod events;
 pub mod math;
 pub mod storage;
+pub mod time;
 
 pub use errors::Error;
 
