@@ -93,9 +93,7 @@ impl RecurringContract {
         if storage::is_initialized(&env) {
             return Err(Error::AlreadyInitialized);
         }
-        if payer == payee {
-            return Err(Error::IdenticalParties);
-        }
+        auth::require_distinct(&payer, &payee)?;
         math::require_positive(amount_per_period)?;
         if period_seconds == 0 {
             return Err(Error::InvalidDuration);

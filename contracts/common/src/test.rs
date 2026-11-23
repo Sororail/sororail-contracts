@@ -339,6 +339,20 @@ fn require_with_false_condition_errors_with_the_given_variant() {
 }
 
 #[test]
+fn require_distinct_rejects_identical_addresses() {
+    let env = Env::default();
+    let a = Address::generate(&env);
+    let b = Address::generate(&env);
+    assert_eq!(auth::require_distinct(&a, &a), Err(Error::IdenticalParties));
+    assert_eq!(
+        auth::require_distinct(&a, &a.clone()),
+        Err(Error::IdenticalParties)
+    );
+    assert_eq!(auth::require_distinct(&a, &b), Ok(()));
+    assert_eq!(auth::require_distinct(&b, &a), Ok(()));
+}
+
+#[test]
 fn require_auth_as_rejects_a_different_address() {
     let env = Env::default();
     let caller = Address::generate(&env);
