@@ -24,15 +24,19 @@ first payment is never available until one full period after authorization.
 | `authorize` | payer | Records the cap and cadence. Requires payer auth. |
 | `charge` | payee | Pulls one period's amount from payer to payee via `transfer_from`. |
 | `charge_up_to` | payee | Pulls up to the requested number of elapsed periods. |
+| `pause`, `resume` | payer | Pauses charging; `charge` fails with `RecurringPaused`. Paused time shifts the schedule later by the length of the pause. |
 | `cancel` | payer or payee | Stops future charges. Revoking the token allowance also stops them. |
-| `next_chargeable_at`, `is_chargeable`, `remaining_periods` | anyone | Reads the schedule and what is still allowed. |
+| `next_chargeable_at`, `is_chargeable`, `remaining_periods`, `charges_remaining`, `charges_made`, `total_charged` | anyone | Reads the schedule, what is still allowed, how many charges were taken and the cumulative amount charged. |
 | `bump`, `get` | anyone | Extends TTL; reads the full authorization record. |
 
 ## Example flow
 
 ```text
 1. The payer approves the recurring contract address on the token for
-   amount_per_period * number_of_periods.
+   amount_per_period * number_of_periods. This must happen first:
+   `authorize` returns RecurringInsufficientAllowance if the allowance is
+   below the cap (or one period when uncapped). The allowance can still
+   change later, so the check is a fail-fast, not a guarantee.
 2. client.authorize(&payer, &payee, &token, &amount_per_period,
                     &period_seconds, &Some(max_periods))
 3. Once per period, client.charge() pulls one payment. Before the next due

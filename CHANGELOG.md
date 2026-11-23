@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   holder. `make_token` is unchanged (#372, #373).
 - CI and `make build` now build `sororail-common` alone for `wasm32v1-none`, so
   a std-only dependency in `common` fails the build (#376).
+- `recurring`: `total_charged()` view backed by a cumulative `total_charged`
+  field on `Authorization` (accumulated with `math::add`); `charges_made()` and
+  `charges_remaining()` views that satisfy `charges_made + remaining ==
+  max_periods` for capped subscriptions; payer-only `pause()` / `resume()` with
+  `Paused` and `Resumed` events (paused time shifts the schedule, `charge`
+  fails with `RecurringPaused`); and an allowance check on `authorize` that
+  returns `RecurringInsufficientAllowance`. The payer must now `approve` the
+  contract before `authorize` (#416, #417, #418, #419).
 - Per-contract crate READMEs rendered through rustdoc, a per-contract threat
   model, `source_repo` contract metadata, and a regression test proving that a
   deauthorized recipient cannot corrupt a stream on a flagged Stellar Asset

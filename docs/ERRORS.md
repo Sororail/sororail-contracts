@@ -52,6 +52,9 @@ Run `make docs-errors` after modifying the enum or its documentation.
 | 81 | `RecurringCancelled` | recurring | The authorization has been cancelled. |
 | 82 | `RecurringPeriodNotElapsed` | recurring | `charge` called before `next_chargeable_at` (including the first charge). |
 | 83 | `RecurringExhausted` | recurring | `max_periods` has been exhausted. |
+| 84 | `RecurringPaused` | recurring | `charge` or `charge_up_to` called while the authorization is paused, or `pause` called on one that is already paused. |
+| 85 | `RecurringNotPaused` | recurring | `resume` called on an authorization that is not paused. |
+| 86 | `RecurringInsufficientAllowance` | recurring | `authorize` called when the payer's token allowance to this contract is below the cap or one period amount. |
 | 100 | `BatchEmpty` | batch_payout | The recipient list was empty. |
 | 101 | `BatchTooLarge` | batch_payout | The recipient list exceeds the documented maximum. |
 | 103 | `BatchRecipientIsContract` | batch_payout | A recipient's address is a smart-contract address. Returned when the caller sets `only_eoa = true` on `execute`, `execute_equal`, `execute_many_tokens`, or `preview` and any recipient is a contract. |

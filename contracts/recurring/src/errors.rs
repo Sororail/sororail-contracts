@@ -13,10 +13,13 @@
 //! | [`Error::InvalidAmount`] | non-positive `amount_per_period`, zero `max_periods` at authorization, or zero `max_periods` passed to `charge_up_to` |
 //! | [`Error::InvalidDuration`] | zero `period_seconds` |
 //! | [`Error::InvalidTimeRange`] | `authorize`, `charge`, or `charge_up_to` scheduling the next charge past `u64::MAX` |
-//! | [`Error::Overflow`] | `periods_charged` exceeding `u32` |
-//! | [`Error::RecurringCancelled`] | `charge` or `cancel` after cancellation |
+//! | [`Error::Overflow`] | `periods_charged` exceeding `u32`, or `total_charged` exceeding `i128` |
+//! | [`Error::RecurringCancelled`] | `charge`, `charge_up_to`, `pause`, `resume` or `cancel` after cancellation |
 //! | [`Error::RecurringPeriodNotElapsed`] | `charge` or `charge_up_to` before `next_chargeable_at` |
 //! | [`Error::RecurringExhausted`] | `charge` or `charge_up_to` once `max_periods` is reached |
+//! | [`Error::RecurringPaused`] | `charge` or `charge_up_to` while paused, or `pause` when already paused |
+//! | [`Error::RecurringNotPaused`] | `resume` when the authorization is not paused |
+//! | [`Error::RecurringInsufficientAllowance`] | `authorize` when the payer's allowance to this contract is below the cap or one period amount |
 //!
 //! # What is absent, and why
 //!
@@ -34,8 +37,10 @@
 //!   number is reserved for an id-keyed design (see "Open design question" in
 //!   SPEC.md).
 //! - `InsufficientBalance` -- the contract holds no funds. A payer whose
-//!   balance or allowance is too small makes the token's `transfer_from` fail
-//!   with the token's own error, which aborts the whole `charge`.
+//!   balance is too small, or whose allowance shrinks after `authorize`, makes
+//!   the token's `transfer_from` fail with the token's own error, which aborts
+//!   the whole `charge`. Only the allowance at `authorize` time is checked
+//!   up front, with `RecurringInsufficientAllowance`.
 //! - `DeadlineNotReached` / `DeadlinePassed` -- there is no deadline; timing is
 //!   expressed as `next_chargeable_at` and reported as
 //!   `RecurringPeriodNotElapsed`.

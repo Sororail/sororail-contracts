@@ -184,6 +184,9 @@ fn eighteen_decimal_token_lifecycles_conserve_value_across_every_contract() {
     assert_eq!(s.balance(&beneficiary), 7 * ATOMIC_18);
     s.assert_nothing_lost(&parties);
 
+    let expiry = s.env.ledger().sequence() + 500_000;
+    s.token
+        .approve(&s.employer, &s.recurring.address, &ATOMIC_18, &expiry);
     s.recurring.authorize(
         &s.employer,
         &vendor,
@@ -192,9 +195,6 @@ fn eighteen_decimal_token_lifecycles_conserve_value_across_every_contract() {
         &1,
         &Some(2),
     );
-    let expiry = s.env.ledger().sequence() + 500_000;
-    s.token
-        .approve(&s.employer, &s.recurring.address, &ATOMIC_18, &expiry);
     s.at(vesting_start + 5);
     assert_eq!(s.recurring.charge(), ATOMIC_18 / 2);
     s.recurring.cancel(&s.employer);
@@ -273,6 +273,9 @@ fn an_operations_month_conserves_every_token() {
     s.assert_nothing_lost(&parties);
 
     // --- a monthly subscription to the vendor ---
+    let expiry = s.env.ledger().sequence() + 500_000;
+    s.token
+        .approve(&s.employer, &s.recurring.address, &MINT, &expiry);
     s.recurring.authorize(
         &s.employer,
         &vendor,
@@ -281,9 +284,6 @@ fn an_operations_month_conserves_every_token() {
         &MONTH,
         &Some(12),
     );
-    let expiry = s.env.ledger().sequence() + 500_000;
-    s.token
-        .approve(&s.employer, &s.recurring.address, &MINT, &expiry);
     s.assert_nothing_lost(&parties);
 
     // --- a month passes ---
@@ -561,6 +561,9 @@ fn each_contracts_instance_ttl_survives_a_long_ledger_advance() {
         &0,
     );
     s.escrow.fund();
+    let expiry = s.env.ledger().sequence() + 500_000;
+    s.token
+        .approve(&s.employer, &s.recurring.address, &MINT, &expiry);
     s.recurring.authorize(
         &s.employer,
         &vendor,
@@ -830,6 +833,9 @@ fn batch_and_recurring_payroll_workflow() {
 
     // --- Recurring subscription: employer authorizes vendor for monthly charges ---
     // Same employer funding both the batch payroll and the vendor subscription
+    let expiry = s.env.ledger().sequence() + 500_000;
+    s.token
+        .approve(&s.employer, &s.recurring.address, &MINT, &expiry);
     s.recurring.authorize(
         &s.employer,
         &vendor,
@@ -838,9 +844,6 @@ fn batch_and_recurring_payroll_workflow() {
         &MONTH,
         &Some(12),
     );
-    let expiry = s.env.ledger().sequence() + 500_000;
-    s.token
-        .approve(&s.employer, &s.recurring.address, &MINT, &expiry);
     s.assert_nothing_lost(&parties);
 
     // --- First month: vendor pulls subscription charge ---
@@ -933,6 +936,9 @@ fn recurring_subscription_charges_once_across_several_periods() {
     let amount = 125_000;
     let periods = 3;
 
+    let expiry = s.env.ledger().sequence() + 500_000;
+    s.token
+        .approve(&s.employer, &s.recurring.address, &MINT, &expiry);
     s.recurring.authorize(
         &s.employer,
         &vendor,
@@ -941,9 +947,6 @@ fn recurring_subscription_charges_once_across_several_periods() {
         &MONTH,
         &Some(periods),
     );
-    let expiry = s.env.ledger().sequence() + 500_000;
-    s.token
-        .approve(&s.employer, &s.recurring.address, &MINT, &expiry);
 
     for period in 1..=periods {
         let due_at = START + MONTH * u64::from(period);

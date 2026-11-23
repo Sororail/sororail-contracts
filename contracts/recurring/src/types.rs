@@ -76,6 +76,14 @@ pub struct Authorization {
     /// successful charge. When a charge completes, this becomes
     /// `amount_per_period` if set.
     pub pending_amount_per_period: Option<i128>,
+    /// Cumulative amount pulled across every successful charge, in the token's
+    /// smallest unit. Accumulated with `math::add`, so it always equals the sum
+    /// of the per-charge amounts even when `update_amount` changed the amount
+    /// part-way through.
+    pub total_charged: i128,
+    /// When the payer paused the authorization, if it is currently paused.
+    /// `None` means active. While `Some`, no charge can be taken.
+    pub paused_at: Option<u64>,
 }
 
 impl Authorization {
@@ -84,9 +92,15 @@ impl Authorization {
         self.remaining_periods() == Some(0)
     }
 
+    /// Whether the payer has paused charging.
+    pub fn is_paused(&self) -> bool {
+        self.paused_at.is_some()
+    }
+
     /// Whether a charge may be taken at `at`.
     pub fn is_chargeable_at(&self, at: u64) -> bool {
         !self.cancelled
+            && !self.is_paused()
             && !self.is_exhausted()
             && at >= self.next_chargeable_at
             && self.valid_until.map_or(true, |until| at < until)
@@ -120,6 +134,8 @@ mod tests {
             valid_until: None,
             max_amount: None,
             pending_amount_per_period: None,
+            total_charged: 0,
+            paused_at: None,
         };
 
         let below = authorization(Some(3), 2);
@@ -155,6 +171,8 @@ mod tests {
             valid_until: None,
             max_amount: None,
             pending_amount_per_period: None,
+            total_charged: 0,
+            paused_at: None,
         };
 
         // Not exhausted when periods_charged < max_periods
@@ -191,6 +209,8 @@ mod tests {
             valid_until: None,
             max_amount: None,
             pending_amount_per_period: None,
+            total_charged: 0,
+            paused_at: None,
         };
 
         // Before next_chargeable_at: not chargeable
@@ -222,6 +242,8 @@ mod tests {
             valid_until: Some(valid_until),
             max_amount: None,
             pending_amount_per_period: None,
+            total_charged: 0,
+            paused_at: None,
         };
 
         // Before next_chargeable_at: not chargeable
@@ -253,6 +275,8 @@ mod tests {
             valid_until: None,
             max_amount: None,
             pending_amount_per_period: None,
+            total_charged: 0,
+            paused_at: None,
         };
 
         assert!(authorization.is_chargeable_at(next_chargeable_at));
