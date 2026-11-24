@@ -44,6 +44,7 @@ pub struct Stream {
     pub token: Address,
     /// Tokens accrued per second, in the token's smallest unit (e.g., stroops
     /// for XLM, or the base unit defined by the token's decimals).
+    /// Deprecated: use `rate_per_second_scaled` and `rate_scale` for sub-unit rates.
     pub rate_per_second: i128,
     /// Ledger timestamp at which accrual begins, in seconds since the Unix
     /// epoch.
@@ -54,7 +55,7 @@ pub struct Stream {
     /// Whether the sender may cancel before `stop`.
     pub cancellable: bool,
     /// Total ever pulled from the sender, in the token's smallest unit. Always
-    /// `rate_per_second * (stop - start)`.
+    /// `rate_per_second * (stop - start)` or derived from scaled rate.
     pub deposited: i128,
     /// Total ever paid out to the recipient, in the token's smallest unit.
     pub withdrawn: i128,
@@ -64,6 +65,13 @@ pub struct Stream {
     /// When the stream was cancelled, if it was, in seconds since the Unix
     /// epoch. Accrual stops here.
     pub cancelled_at: Option<u64>,
+    /// Scaled rate numerator for sub-unit accrual. When set, actual rate is
+    /// `rate_per_second_scaled / rate_scale` per second.
+    /// Computed as: `accrued = rate_per_second_scaled * elapsed / rate_scale`.
+    pub rate_per_second_scaled: Option<i128>,
+    /// Scale denominator for the rate. Only meaningful when
+    /// `rate_per_second_scaled` is Some. Recommend 1_000_000 for 6 decimal places.
+    pub rate_scale: Option<i128>,
 }
 
 impl Stream {
@@ -73,6 +81,9 @@ impl Stream {
     /// accrues before `start`, and accrual halts at `stop` or at the
     /// cancellation timestamp, whichever comes first. The result can never
     /// exceed `deposited`.
+    ///
+    /// When `rate_per_second_scaled` is set, computes accrual using fixed-point
+    /// math: `rate_per_second_scaled * elapsed / rate_scale`, rounding toward zero.
     pub fn accrued_at(&self, at: u64) -> Result<i128, Error> {
         let mut effective = at;
         if let Some(cancelled) = self.cancelled_at {
@@ -86,7 +97,12 @@ impl Stream {
             return Ok(0);
         }
         let elapsed = math::sub(i128::from(effective), i128::from(self.start))?;
-        let accrued = math::mul(self.rate_per_second, elapsed)?;
+
+        let accrued = if let (Some(scaled_rate), Some(scale)) = (self.rate_per_second_scaled, self.rate_scale) {
+            math::mul_div(scaled_rate, elapsed, scale)?
+        } else {
+            math::mul(self.rate_per_second, elapsed)?
+        };
         Ok(math::min(accrued, self.deposited))
     }
 
@@ -125,6 +141,23 @@ impl Stream {
     /// The declared span in seconds.
     pub fn duration(&self) -> u64 {
         self.stop.saturating_sub(self.start)
+    }
+
+    /// Total accrued to the recipient as of `at`, same as `accrued_at`.
+    /// Frozen at cancellation.
+    pub fn streamed_so_far(&self, at: u64) -> Result<i128, Error> {
+        self.accrued_at(at)
+    }
+
+    /// Seconds remaining until the stream ends, clamped at zero.
+    /// Frozen at cancellation.
+    pub fn time_remaining(&self, at: u64) -> u64 {
+        let effective = if let Some(cancelled) = self.cancelled_at {
+            cancelled
+        } else {
+            at
+        };
+        self.stop.saturating_sub(effective)
     }
 }
 

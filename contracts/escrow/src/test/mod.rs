@@ -30,6 +30,51 @@ mod release;
 mod resolve;
 mod time_to_deadline;
 
+#[test]
+fn arbiter_view_returns_configured_arbiter() {
+    let f = Fixture::new(true);
+    assert_eq!(f.client.arbiter(), Some(f.arbiter.clone()));
+}
+
+#[test]
+fn arbiter_view_returns_none_when_unconfigured() {
+    let f = Fixture::new(false);
+    assert_eq!(f.client.arbiter(), None);
+}
+
+#[test]
+fn parties_view_returns_depositor_and_beneficiary() {
+    let f = Fixture::new(true);
+    assert_eq!(
+        f.client.parties(),
+        (f.depositor.clone(), f.beneficiary.clone())
+    );
+}
+
+#[test]
+fn parties_view_works_in_all_states() {
+    let f = Fixture::new(true);
+    // Created state
+    assert_eq!(
+        f.client.parties(),
+        (f.depositor.clone(), f.beneficiary.clone())
+    );
+
+    // Funded state
+    f.client.fund();
+    assert_eq!(
+        f.client.parties(),
+        (f.depositor.clone(), f.beneficiary.clone())
+    );
+
+    // Released state
+    f.client.release(&f.depositor);
+    assert_eq!(
+        f.client.parties(),
+        (f.depositor.clone(), f.beneficiary.clone())
+    );
+}
+
 const AMOUNT: i128 = 1_000_000;
 const START_TS: u64 = 1_000_000;
 const DEADLINE: u64 = START_TS + 10_000;

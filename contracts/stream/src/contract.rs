@@ -70,6 +70,8 @@ impl StreamContract {
             withdrawn: 0,
             refunded: 0,
             cancelled_at: None,
+            rate_per_second_scaled: None,
+            rate_scale: None,
         };
         storage::save(&env, &stream);
 
