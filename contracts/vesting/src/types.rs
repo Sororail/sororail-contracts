@@ -237,4 +237,35 @@ impl Grant {
     pub fn end_at(&self) -> u64 {
         self.start.saturating_add(self.duration)
     }
+
+    /// Total not yet vested as of `at`, whether claimed or not.
+    pub fn unvested(&self, at: u64) -> Result<i128, Error> {
+        math::sub(self.total, self.vested_amount(at)?)
+    }
+
+    /// Percentage of total vested as of `at`, in basis points (0-10000).
+    /// Rounds down using `math::mul_div`.
+    pub fn percent_vested_bps(&self, at: u64) -> Result<i128, Error> {
+        let vested = self.vested_amount(at)?;
+        math::mul_div(vested, 10_000, self.total)
+    }
+
+    /// Next unlock timestamp after `at`, or `None` if fully vested.
+    /// For cliff schedules, returns the cliff or end timestamp.
+    /// For linear schedules between cliff and end, returns `at + 1` to indicate
+    /// continuous vesting; a client may use this as a poll interval suggestion.
+    pub fn next_unlock_at(&self, at: u64) -> Option<u64> {
+        let end = self.end_at();
+        if at >= end {
+            return None;
+        }
+
+        let cliff_at = self.cliff_at();
+        if at < cliff_at {
+            return Some(cliff_at);
+        }
+
+        // Between cliff and end: linear vesting. Return at + 1 as a poll hint.
+        Some(at.saturating_add(1))
+    }
 }
